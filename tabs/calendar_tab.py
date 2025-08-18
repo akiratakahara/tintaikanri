@@ -1,6 +1,10 @@
 """
 カレンダービュータブ - タスクと更新管理スケジュール表示
 """
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QCalendarWidget, 
                              QLabel, QListWidget, QListWidgetItem, QPushButton, 
                              QGroupBox, QSplitter, QTextEdit, QComboBox,

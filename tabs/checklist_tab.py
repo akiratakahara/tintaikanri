@@ -1,10 +1,15 @@
 import os
+import sys
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
                              QTableWidgetItem, QPushButton, QLabel, QLineEdit, 
                              QTextEdit, QMessageBox, QGroupBox, QFormLayout, QComboBox, QFileDialog)
 from PyQt6.QtCore import QThread, pyqtSignal
+
+# プロジェクトルートをPythonパスに追加（tabsフォルダ内のモジュールがルートのモジュールにアクセスできるように）
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from models import ChecklistStatus, TenantContract, Customer, Property
-from ocr.gemini_ocr import GeminiOCR
+from gemini_ocr import GeminiOCR
 
 class ChecklistWorker(QThread):
     """チェックリスト処理を非同期で実行するワーカースレッド"""

@@ -1,11 +1,16 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
                              QTableWidgetItem, QPushButton, QLabel, QLineEdit, 
-                             QComboBox, QTextEdit, QFormLayout, QGroupBox, 
-                             QMessageBox, QHeaderView, QFileDialog)
+                             QTextEdit, QMessageBox, QGroupBox, QFormLayout, 
+                             QComboBox, QFileDialog, QDialog, QDialogButtonBox)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QColor
+import sys
+import os
+
+# プロジェクトルートをPythonパスに追加（tabsフォルダ内のモジュールがルートのモジュールにアクセスできるように）
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from models import ConsistencyCheck, TenantContract, Document, DocumentType
-from ocr.gemini_ocr import GeminiOCR
+from gemini_ocr import GeminiOCR
 
 class ConsistencyCheckWorker(QThread):
     """整合性チェック処理を非同期で実行するワーカースレッド"""

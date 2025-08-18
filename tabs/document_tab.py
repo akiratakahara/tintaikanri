@@ -1,10 +1,16 @@
 import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
                              QTableWidgetItem, QPushButton, QLabel, QLineEdit, 
-                             QTextEdit, QMessageBox, QGroupBox, QFormLayout, QComboBox, QFileDialog)
-from PyQt6.QtCore import QThread, pyqtSignal
+                             QTextEdit, QMessageBox, QGroupBox, QFormLayout, 
+                             QComboBox, QFileDialog, QDateEdit, QDialog, QDialogButtonBox)
+from PyQt6.QtCore import Qt, QDate, QThread, pyqtSignal
+import sys
+
+# プロジェクトルートをPythonパスに追加（tabsフォルダ内のモジュールがルートのモジュールにアクセスできるように）
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from models import Document, TenantContract, Customer, Property, DocumentType
-from ocr.gemini_ocr import GeminiOCR
+from gemini_ocr import GeminiOCR
 
 class OCRWorker(QThread):
     """OCR処理を非同期で実行するワーカースレッド"""

@@ -1,6 +1,10 @@
 """
 タスク管理タブ - 基本版
 """
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
                              QTableWidgetItem, QPushButton, QLabel, QLineEdit, 
                              QComboBox, QTextEdit, QDateEdit, QFormLayout, 

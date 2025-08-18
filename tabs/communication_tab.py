@@ -3,6 +3,12 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
                              QComboBox, QTextEdit, QDateEdit, QFormLayout, 
                              QGroupBox, QMessageBox, QHeaderView)
 from PyQt6.QtCore import Qt, QDate
+import sys
+import os
+
+# プロジェクトルートをPythonパスに追加（tabsフォルダ内のモジュールがルートのモジュールにアクセスできるように）
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from models import Communication, Customer, TenantContract, Unit, Property
 
 class CommunicationTab(QWidget):

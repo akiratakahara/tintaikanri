@@ -6,9 +6,14 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
                              QTableWidgetItem, QPushButton, QLabel, QLineEdit, 
                              QTextEdit, QMessageBox, QGroupBox, QFormLayout, 
-                             QSpinBox, QComboBox, QCheckBox, QFileDialog, QTabWidget,
-                             QDialog, QDialogButtonBox)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+                             QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox, QDialog, QDialogButtonBox, QTabWidget, QFileDialog)
+from PyQt6.QtCore import Qt, QDate, QThread, pyqtSignal
+import sys
+import os
+
+# プロジェクトルートをPythonパスに追加（tabsフォルダ内のモジュールがルートのモジュールにアクセスできるように）
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from models import Unit, Property, Customer
 
 # OCR機能をオプショナルにする

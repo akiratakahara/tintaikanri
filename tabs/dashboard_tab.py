@@ -1,6 +1,8 @@
 """
 ダッシュボード画面 - システム全体の状況を一覧表示
 """
+import sys
+import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
                              QLabel, QTableWidget, QTableWidgetItem, QPushButton,
                              QProgressBar, QFrame, QGridLayout, QScrollArea,
@@ -8,75 +10,15 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QPalette
 from datetime import datetime, date, timedelta
+
+# プロジェクトルートをPythonパスに追加（tabsフォルダ内のモジュールがルートのモジュールにアクセスできるように）
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from models import (Customer, Property, TenantContract, Task, Unit,
-                   Document, Communication, ConsistencyCheck, ActivityLog)
+                   Document, Communication, ConsistencyCheck, ActivityLog,
+                   get_db_connection)
 from utils import DateHelper, FormatHelper, StatusColor
 
-class StatCard(QFrame):
-    """統計カード"""
-    
-    def __init__(self, title: str, value: str, sub_text: str = "", color: str = "#2196F3"):
-        super().__init__()
-        self.color = color
-        self.init_ui(title, value, sub_text, color)
-    
-    def init_ui(self, title, value, sub_text, color):
-        self.setFrameStyle(QFrame.Shape.Box)
-        self.setStyleSheet(f"""
-            QFrame {{
-                border: 2px solid {color};
-                border-radius: 10px;
-                background-color: white;
-                padding: 16px;
-                min-width: 250px;
-            }}
-        """)
-        
-        layout = QVBoxLayout()
-        layout.setSpacing(8)
-        
-        # タイトル
-        self.title_label = QLabel(title)
-        self.title_label.setStyleSheet(f"color: {color}; font-weight: bold; font-size: 14px;")
-        
-        # 値
-        self.value_label = QLabel(value)
-        self.value_label.setFont(QFont("Arial", 28, QFont.Weight.Bold))
-        self.value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.value_label.setWordWrap(True)  # 長いテキストの折り返し
-        
-        # サブテキスト
-        self.sub_label = QLabel(sub_text)
-        self.sub_label.setStyleSheet("color: gray; font-size: 12px;")
-        self.sub_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.sub_label.setWordWrap(True)  # 長いテキストの折り返し
-        
-        layout.addWidget(self.title_label)
-        layout.addWidget(self.value_label)
-        layout.addWidget(self.sub_label)
-        
-        self.setLayout(layout)
-        self.setMinimumWidth(250)  # 最小幅を250pxに増加
-        self.setMaximumHeight(160)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-    
-    def update_value(self, value: str, sub_text: str = "", color: str = None):
-        """カードの値を更新"""
-        self.value_label.setText(value)
-        self.sub_label.setText(sub_text)
-        
-        if color and color != self.color:
-            self.color = color
-            self.setStyleSheet(f"""
-                QFrame {{
-                    border: 2px solid {color};
-                    border-radius: 10px;
-                    background-color: white;
-                    padding: 16px;
-                    min-width: 250px;
-                }}
-            """)
-            self.title_label.setStyleSheet(f"color: {color}; font-weight: bold;")
 
 class DashboardTab(QWidget):
     """ダッシュボードタブ"""
@@ -86,12 +28,43 @@ class DashboardTab(QWidget):
     def __init__(self):
         super().__init__()
         self.init_ui()
+        
+        # データベースの状況を確認
+        self.check_database_status()
+        
         self.load_dashboard_data()
         
         # 自動更新タイマー（5分ごと）
         self.auto_refresh_timer = QTimer()
         self.auto_refresh_timer.timeout.connect(self.load_dashboard_data)
         self.auto_refresh_timer.start(300000)  # 5分 = 300000ms
+    
+    def check_database_status(self):
+        """データベースの状況を確認"""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # 各テーブルのレコード数を確認
+            tables = ['customers', 'properties', 'units', 'tenant_contracts']
+            total_records = 0
+            
+            for table in tables:
+                try:
+                    cursor.execute(f'SELECT COUNT(*) FROM {table}')
+                    count = cursor.fetchone()[0]
+                    total_records += count
+                except Exception as e:
+                    print(f"テーブル {table} 確認エラー: {str(e)}")
+            
+            conn.close()
+            
+            if total_records == 0:
+                print("警告: データベースにデータが存在しません")
+                print("サンプルデータ作成ボタンを使用してデータを作成してください")
+            
+        except Exception as e:
+            print(f"データベース状況確認エラー: {str(e)}")
     
     def init_ui(self):
         # スクロールエリア
@@ -113,6 +86,18 @@ class DashboardTab(QWidget):
         
         header_layout.addStretch()
         
+        # デバッグボタン（開発用）
+        debug_button = QPushButton("デバッグ")
+        debug_button.clicked.connect(self.debug_database_status)
+        debug_button.setStyleSheet("background-color: #FF9800; color: white; padding: 5px 10px;")
+        header_layout.addWidget(debug_button)
+        
+        # サンプルデータ作成ボタン（テスト用）
+        sample_button = QPushButton("サンプルデータ作成")
+        sample_button.clicked.connect(self.create_sample_data)
+        sample_button.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px 10px;")
+        header_layout.addWidget(sample_button)
+        
         # 更新ボタン
         refresh_button = QPushButton("更新")
         refresh_button.clicked.connect(self.load_dashboard_data)
@@ -120,31 +105,40 @@ class DashboardTab(QWidget):
         
         main_layout.addLayout(header_layout)
         
-        # 統計カードエリア
-        stats_layout = QGridLayout()
-        stats_layout.setSpacing(20)  # カード間のスペーシングを増加
+        # 統計情報テーブル
+        stats_group = QGroupBox("統計情報")
+        stats_layout = QVBoxLayout()
         
-        # 統計カード
-        self.total_properties_card = StatCard("物件数", "0", "", "#2196F3")
-        self.total_units_card = StatCard("総部屋数", "0", "", "#4CAF50")
-        self.occupied_units_card = StatCard("入居中", "0", "", "#FF9800")
-        self.vacancy_rate_card = StatCard("空室率", "0%", "", "#f44336")
-        self.total_customers_card = StatCard("顧客数", "0", "", "#9C27B0")
-        self.active_contracts_card = StatCard("有効契約", "0", "", "#00BCD4")
+        self.stats_table = QTableWidget()
+        self.stats_table.setColumnCount(2)
+        self.stats_table.setHorizontalHeaderLabels(["項目", "値"])
+        self.stats_table.horizontalHeader().setStretchLastSection(True)
+        self.stats_table.setMaximumHeight(200)
+        self.stats_table.setAlternatingRowColors(True)
         
-        # グリッドレイアウトに追加（2行3列のレイアウトに変更）
-        stats_layout.addWidget(self.total_properties_card, 0, 0)
-        stats_layout.addWidget(self.total_units_card, 0, 1)
-        stats_layout.addWidget(self.occupied_units_card, 0, 2)
-        stats_layout.addWidget(self.vacancy_rate_card, 1, 0)
-        stats_layout.addWidget(self.total_customers_card, 1, 1)
-        stats_layout.addWidget(self.active_contracts_card, 1, 2)
+        # 初期データ設定
+        stats_items = [
+            ("物件数", "0"),
+            ("総部屋数", "0"),
+            ("入居中", "0"),
+            ("空室率", "0%"),
+            ("顧客数", "0"),
+            ("有効契約", "0")
+        ]
         
-        # 列の伸縮設定（3列に変更）
-        for i in range(3):
-            stats_layout.setColumnStretch(i, 1)
+        self.stats_table.setRowCount(len(stats_items))
+        for i, (item, value) in enumerate(stats_items):
+            self.stats_table.setItem(i, 0, QTableWidgetItem(item))
+            self.stats_table.setItem(i, 1, QTableWidgetItem(value))
+            # 項目名を太字に
+            item_widget = self.stats_table.item(i, 0)
+            font = item_widget.font()
+            font.setBold(True)
+            item_widget.setFont(font)
         
-        main_layout.addLayout(stats_layout)
+        stats_layout.addWidget(self.stats_table)
+        stats_group.setLayout(stats_layout)
+        main_layout.addWidget(stats_group)
         
         # 区切り線
         line1 = QFrame()
@@ -242,67 +236,243 @@ class DashboardTab(QWidget):
         layout.addWidget(scroll_area)
         self.setLayout(layout)
     
+    def debug_database_status(self):
+        """データベースの状況をデバッグ出力"""
+        print("\n=== データベース状況デバッグ ===")
+        
+        try:
+            # 各テーブルのレコード数を確認
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            tables = ['customers', 'properties', 'units', 'tenant_contracts', 'tasks', 'communications']
+            
+            for table in tables:
+                try:
+                    cursor.execute(f'SELECT COUNT(*) FROM {table}')
+                    count = cursor.fetchone()[0]
+                    print(f"{table}: {count}件")
+                except Exception as e:
+                    print(f"{table}: エラー - {str(e)}")
+            
+            conn.close()
+            
+        except Exception as e:
+            print(f"データベース接続エラー: {str(e)}")
+        
+        print("=== デバッグ完了 ===\n")
+    
+    def create_sample_data(self):
+        """サンプルデータを作成（テスト用）"""
+        try:
+            print("サンプルデータ作成開始")
+            
+            # サンプル物件を作成
+            property_id = Property.create(
+                name="サンプルマンション",
+                address="東京都渋谷区サンプル1-1-1",
+                structure="RC造",
+                management_type="自社管理"
+            )
+            print(f"サンプル物件作成: ID={property_id}")
+            
+            # サンプル部屋を作成
+            unit_id = Unit.create(
+                property_id=property_id,
+                room_number="101",
+                floor="1階",
+                area=25.0
+            )
+            print(f"サンプル部屋作成: ID={unit_id}")
+            
+            # サンプル顧客を作成
+            customer_id = Customer.create(
+                name="サンプル太郎",
+                customer_type="tenant",
+                phone="03-1234-5678",
+                email="sample@example.com"
+            )
+            print(f"サンプル顧客作成: ID={customer_id}")
+            
+            # サンプル契約を作成
+            contract_id = TenantContract.create(
+                unit_id=unit_id,
+                contractor_name="サンプル太郎",
+                start_date="2024-01-01",
+                end_date="2025-12-31",
+                rent=80000,
+                maintenance_fee=5000,
+                customer_id=customer_id
+            )
+            print(f"サンプル契約作成: ID={contract_id}")
+            
+            print("サンプルデータ作成完了")
+            
+            # データを再読み込み
+            self.load_dashboard_data()
+            
+        except Exception as e:
+            print(f"サンプルデータ作成エラー: {str(e)}")
+    
     def load_dashboard_data(self):
         """ダッシュボードデータを読み込み"""
         try:
+            print("ダッシュボードデータ読み込み開始")
+            
             # 最終更新時刻
             self.last_update_label.setText(f"最終更新: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
             
+            # 統計情報の収集
+            stats_data = {}
+            
             # 物件統計
-            properties = Property.get_all()
-            self.total_properties_card.update_value(str(len(properties)))
+            try:
+                properties = Property.get_all()
+                print(f"物件データ取得: {len(properties)}件")
+                stats_data["物件数"] = f"{len(properties)}件"
+            except Exception as e:
+                print(f"物件データ取得エラー: {str(e)}")
+                stats_data["物件数"] = "0件"
             
             # 部屋統計
-            total_units = 0
-            occupied_units = 0
-            all_units = Unit.get_all()
-            total_units = len(all_units)
+            try:
+                total_units = 0
+                occupied_units = 0
+                all_units = Unit.get_all()
+                total_units = len(all_units)
+                print(f"部屋データ取得: {total_units}件")
+                stats_data["総部屋数"] = f"{total_units}室"
+            except Exception as e:
+                print(f"部屋データ取得エラー: {str(e)}")
+                stats_data["総部屋数"] = "0室"
+                total_units = 0
             
             # 契約統計
-            contracts = TenantContract.get_all()
-            active_contracts = [c for c in contracts if not DateHelper.is_expired(c.get('end_date'))]
-            occupied_units = len(active_contracts)
-            
-            self.total_units_card.update_value(str(total_units))
-            self.occupied_units_card.update_value(str(occupied_units))
+            try:
+                contracts = TenantContract.get_all()
+                print(f"契約データ取得: {len(contracts)}件")
+                
+                # 有効契約の判定
+                active_contracts = []
+                for contract in contracts:
+                    end_date = contract.get('end_date')
+                    if end_date:
+                        try:
+                            # 日付文字列を日付オブジェクトに変換
+                            if isinstance(end_date, str):
+                                end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
+                            else:
+                                end_date_obj = end_date
+                            
+                            # 今日の日付と比較
+                            today = date.today()
+                            if end_date_obj >= today:
+                                active_contracts.append(contract)
+                        except Exception as date_error:
+                            print(f"日付変換エラー: {end_date}, {str(date_error)}")
+                            # 日付が不正な場合は有効とみなす
+                            active_contracts.append(contract)
+                    else:
+                        # 終了日がない場合は有効とみなす
+                        active_contracts.append(contract)
+                
+                occupied_units = len(active_contracts)
+                print(f"有効契約数: {occupied_units}件")
+                stats_data["入居中"] = f"{occupied_units}室"
+                stats_data["有効契約"] = f"{len(active_contracts)}件"
+                
+            except Exception as e:
+                print(f"契約データ取得エラー: {str(e)}")
+                stats_data["入居中"] = "0室"
+                stats_data["有効契約"] = "0件"
+                occupied_units = 0
             
             # 空室率計算
-            vacancy_rate = 0
-            if total_units > 0:
-                vacancy_rate = ((total_units - occupied_units) / total_units) * 100
-            
-            color = "#4CAF50" if vacancy_rate < 10 else "#FF9800" if vacancy_rate < 20 else "#f44336"
-            self.vacancy_rate_card.update_value(f"{vacancy_rate:.1f}%", color=color)
+            try:
+                vacancy_rate = 0
+                if total_units > 0:
+                    vacancy_rate = ((total_units - occupied_units) / total_units) * 100
+                
+                print(f"空室率計算: {vacancy_rate:.1f}%")
+                stats_data["空室率"] = f"{vacancy_rate:.1f}% (空室{total_units - occupied_units}室)"
+            except Exception as e:
+                print(f"空室率計算エラー: {str(e)}")
+                stats_data["空室率"] = "-"
             
             # 顧客統計
-            customers = Customer.get_all()
-            tenants = [c for c in customers if c.get('type') == 'tenant']
-            owners = [c for c in customers if c.get('type') == 'owner']
+            try:
+                customers = Customer.get_all()
+                print(f"顧客データ取得: {len(customers)}件")
+                
+                tenants = [c for c in customers if c.get('type') == 'tenant']
+                owners = [c for c in customers if c.get('type') == 'owner']
+                
+                stats_data["顧客数"] = f"{len(customers)}名 (テナント: {len(tenants)} / オーナー: {len(owners)})"
+            except Exception as e:
+                print(f"顧客データ取得エラー: {str(e)}")
+                stats_data["顧客数"] = "0名"
             
-            self.total_customers_card.update_value(
-                str(len(customers)),
-                sub_text=f"テナント: {len(tenants)} / オーナー: {len(owners)}"
-            )
+            # 統計テーブルを更新
+            stats_items = [
+                ("物件数", stats_data.get("物件数", "0件")),
+                ("総部屋数", stats_data.get("総部屋数", "0室")),
+                ("入居中", stats_data.get("入居中", "0室")),
+                ("空室率", stats_data.get("空室率", "-")),
+                ("顧客数", stats_data.get("顧客数", "0名")),
+                ("有効契約", stats_data.get("有効契約", "0件"))
+            ]
             
-            self.active_contracts_card.update_value(str(len(active_contracts)))
+            self.stats_table.setRowCount(len(stats_items))
+            for i, (item, value) in enumerate(stats_items):
+                self.stats_table.setItem(i, 0, QTableWidgetItem(item))
+                self.stats_table.setItem(i, 1, QTableWidgetItem(value))
+                # 項目名を太字に
+                item_widget = self.stats_table.item(i, 0)
+                font = item_widget.font()
+                font.setBold(True)
+                item_widget.setFont(font)
             
             # アラート読み込み
-            self.load_alerts()
+            try:
+                self.load_alerts()
+            except Exception as e:
+                print(f"アラート読み込みエラー: {str(e)}")
             
             # 契約更新予定読み込み
-            self.load_renewal_contracts()
+            try:
+                self.load_renewal_contracts()
+            except Exception as e:
+                print(f"契約更新予定読み込みエラー: {str(e)}")
             
             # 未完了タスク読み込み
-            self.load_pending_tasks()
+            try:
+                self.load_pending_tasks()
+            except Exception as e:
+                print(f"未完了タスク読み込みエラー: {str(e)}")
             
             # 最近の活動読み込み
-            self.load_recent_activities()
+            try:
+                self.load_recent_activities()
+            except Exception as e:
+                print(f"最近の活動読み込みエラー: {str(e)}")
             
             # 収支サマリー読み込み
-            self.load_income_summary(active_contracts)
+            try:
+                self.load_income_summary(active_contracts if 'active_contracts' in locals() else [])
+            except Exception as e:
+                print(f"収支サマリー読み込みエラー: {str(e)}")
+            
+            print("ダッシュボードデータ読み込み完了")
             
         except Exception as e:
-            print(f"ダッシュボードデータ読み込みエラー: {str(e)}")
+            print(f"ダッシュボードデータ読み込み全体エラー: {str(e)}")
+            # エラーが発生した場合でも、カードにエラー表示
+            self.total_properties_card.update_value("エラー", "データ取得失敗")
+            self.total_units_card.update_value("エラー", "データ取得失敗")
+            self.occupied_units_card.update_value("エラー", "データ取得失敗")
+            self.vacancy_rate_card.update_value("エラー", "データ取得失敗")
+            self.total_customers_card.update_value("エラー", "データ取得失敗")
+            self.active_contracts_card.update_value("エラー", "データ取得失敗")
     
     def load_alerts(self):
         """アラートを読み込み"""

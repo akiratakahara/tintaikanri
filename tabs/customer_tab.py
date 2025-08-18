@@ -1,8 +1,14 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
                              QTableWidgetItem, QPushButton, QLabel, QLineEdit, 
-                             QTextEdit, QMessageBox, QGroupBox, QFormLayout, QComboBox, QCheckBox,
-                             QTabWidget, QDialog, QDialogButtonBox)
-from PyQt6.QtWidgets import QInputDialog
+                             QTextEdit, QMessageBox, QGroupBox, QFormLayout, 
+                             QComboBox, QDateEdit, QSpinBox, QDialog, QDialogButtonBox, QTabWidget)
+from PyQt6.QtCore import Qt, QDate
+import sys
+import os
+
+# プロジェクトルートをPythonパスに追加（tabsフォルダ内のモジュールがルートのモジュールにアクセスできるように）
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from models import Customer, OwnerProfile, TenantProfile, Property, Unit
 
 class CustomerTab(QWidget):

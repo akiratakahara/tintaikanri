@@ -1,6 +1,10 @@
 """
 改良版契約管理タブ - 書類管理・更新期限管理・手続きログ機能付き
 """
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
                              QTableWidgetItem, QPushButton, QLabel, QLineEdit, 
                              QTextEdit, QMessageBox, QGroupBox, QFormLayout, 
@@ -11,7 +15,6 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
 from PyQt6.QtCore import Qt, QDate, pyqtSignal
 from PyQt6.QtGui import QColor, QFont
 from datetime import datetime, date, timedelta
-import os
 import shutil
 from models import TenantContract, Unit, Property, Customer
 from utils import (Validator, TableHelper, MessageHelper, FormatHelper, 

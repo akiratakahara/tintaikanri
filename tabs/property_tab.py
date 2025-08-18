@@ -3,7 +3,12 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
                              QTextEdit, QMessageBox, QGroupBox, QFormLayout, 
                              QSpinBox, QTabWidget, QScrollArea, QFileDialog, QComboBox)
 import os
+import sys
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
+
+# プロジェクトルートをPythonパスに追加（tabsフォルダ内のモジュールがルートのモジュールにアクセスできるように）
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from models import Property, BuildingRegistry, LandRegistry, RegistryDocument, Customer, FloorDetail, FloorOccupancy, RecruitmentStatus
 
 # OCR機能をオプショナルにする
@@ -95,7 +100,86 @@ class PropertyTab(QWidget):
         main_widget = QWidget()
         main_layout = QVBoxLayout()
         
-        # タブウィジェット
+        # 1. ウェルカムメッセージ（最上部）
+        welcome_group = QGroupBox("物件統合管理へようこそ")
+        welcome_layout = QVBoxLayout()
+        welcome_label = QLabel("物件・部屋の統合管理システムです。物件の登録、更新、登記簿管理、階層詳細まで一元管理できます。")
+        welcome_label.setWordWrap(True)
+        welcome_label.setStyleSheet("font-size: 14px; color: #2196F3; padding: 10px;")
+        welcome_layout.addWidget(welcome_label)
+        welcome_group.setLayout(welcome_layout)
+        main_layout.addWidget(welcome_group)
+        
+        # 2. クイックアクション（2番目）
+        quick_action_group = QGroupBox("クイックアクション")
+        quick_action_layout = QHBoxLayout()
+        
+        new_property_button = QPushButton("➕ 新規物件登録")
+        new_property_button.setStyleSheet("background-color: #4CAF50; color: white; padding: 10px 20px; font-size: 14px;")
+        new_property_button.clicked.connect(self.show_new_property_form)
+        
+        update_property_button = QPushButton("🔄 物件更新")
+        update_property_button.setStyleSheet("background-color: #FF9800; color: white; padding: 10px 20px; font-size: 14px;")
+        update_property_button.clicked.connect(self.show_update_property_form)
+        
+        view_details_button = QPushButton("👁️ 詳細表示")
+        view_details_button.setStyleSheet("background-color: #2196F3; color: white; padding: 10px 20px; font-size: 14px;")
+        view_details_button.clicked.connect(self.show_property_details)
+        
+        quick_action_layout.addWidget(new_property_button)
+        quick_action_layout.addWidget(update_property_button)
+        quick_action_layout.addWidget(view_details_button)
+        quick_action_layout.addStretch()
+        
+        quick_action_group.setLayout(quick_action_layout)
+        main_layout.addWidget(quick_action_group)
+        
+        # 3. 物件一覧テーブル（3番目）
+        property_list_group = QGroupBox("物件一覧")
+        property_list_layout = QVBoxLayout()
+        
+        # 検索・フィルター機能
+        search_layout = QHBoxLayout()
+        search_label = QLabel("検索:")
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("物件名、住所で検索...")
+        self.search_edit.textChanged.connect(self.filter_properties)
+        
+        filter_combo = QComboBox()
+        filter_combo.addItems(["すべて", "自社管理", "他社仲介", "共同管理"])
+        filter_combo.currentTextChanged.connect(self.filter_properties)
+        
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.search_edit, 1)
+        search_layout.addWidget(QLabel("管理形態:"))
+        search_layout.addWidget(filter_combo)
+        
+        property_list_layout.addLayout(search_layout)
+        
+        self.property_table = QTableWidget()
+        self.property_table.setColumnCount(8)
+        self.property_table.setHorizontalHeaderLabels([
+            "ID", "物件名", "住所", "管理形態", "募集中", "更新予定", "書類状況", "最終更新"
+        ])
+        
+        # テーブルのサイズ調整
+        self.property_table.setMinimumHeight(300)
+        self.property_table.horizontalHeader().setStretchLastSection(True)
+        
+        # ダブルクリックで詳細表示
+        self.property_table.cellDoubleClicked.connect(self.show_property_detail)
+        
+        # 選択変更時のイベント
+        self.property_table.itemSelectionChanged.connect(self.on_property_selection_changed)
+        
+        property_list_layout.addWidget(self.property_table)
+        property_list_group.setLayout(property_list_layout)
+        main_layout.addWidget(property_list_group)
+        
+        # 4. タブウィジェット（4番目）
+        tab_group = QGroupBox("詳細管理")
+        tab_layout = QVBoxLayout()
+        
         self.tab_widget = QTabWidget()
         
         # 謄本アップロードタブ（新機能）
@@ -118,29 +202,9 @@ class PropertyTab(QWidget):
         self.floor_tab = self.create_floor_tab()
         self.tab_widget.addTab(self.floor_tab, "階層詳細")
         
-        main_layout.addWidget(self.tab_widget)
-        
-        # 物件一覧テーブル
-        property_list_group = QGroupBox("物件一覧")
-        property_list_layout = QVBoxLayout()
-        
-        self.property_table = QTableWidget()
-        self.property_table.setColumnCount(8)
-        self.property_table.setHorizontalHeaderLabels([
-            "ID", "物件名", "住所", "管理形態", "募集中", "更新予定", "書類状況", "最終更新"
-        ])
-        
-        # テーブルのサイズ調整
-        self.property_table.setMinimumHeight(200)
-        self.property_table.horizontalHeader().setStretchLastSection(True)
-        
-        # ダブルクリックで詳細表示
-        self.property_table.cellDoubleClicked.connect(self.show_property_detail)
-        
-        property_list_layout.addWidget(self.property_table)
-        property_list_group.setLayout(property_list_layout)
-        
-        main_layout.addWidget(property_list_group)
+        tab_layout.addWidget(self.tab_widget)
+        tab_group.setLayout(tab_layout)
+        main_layout.addWidget(tab_group)
         
         # メインウィジェットにレイアウトを設定
         main_widget.setLayout(main_layout)
@@ -156,7 +220,7 @@ class PropertyTab(QWidget):
         layout = QVBoxLayout()
         layout.addWidget(scroll_area)
         self.setLayout(layout)
-        
+    
     def create_basic_tab(self):
         """基本情報タブを作成"""
         # メインウィジェット
@@ -2474,3 +2538,97 @@ class PropertyTab(QWidget):
             rooms = ["101", "102", "201", "202", "301", "302"]
             for room in rooms:
                 self.room_combo.addItem(room, room) 
+    
+    def show_new_property_form(self):
+        """新規物件登録フォームを表示"""
+        # 基本情報タブに切り替え
+        self.tab_widget.setCurrentIndex(1)  # 基本情報タブ
+        # フォームをクリア
+        self.clear_basic_form()
+        # 物件名フィールドにフォーカス
+        self.property_name_edit.setFocus()
+    
+    def show_update_property_form(self):
+        """物件更新フォームを表示"""
+        if self.current_property_id:
+            # 基本情報タブに切り替え
+            self.tab_widget.setCurrentIndex(1)  # 基本情報タブ
+            # 現在の物件情報をフォームに読み込み
+            self.load_property_to_form(self.current_property_id)
+        else:
+            QMessageBox.information(self, "情報", "更新する物件を選択してください。")
+    
+    def show_property_details(self):
+        """物件詳細を表示"""
+        if self.current_property_id:
+            # 基本情報タブに切り替え
+            self.tab_widget.setCurrentIndex(1)  # 基本情報タブ
+            # 現在の物件情報をフォームに読み込み
+            self.load_property_to_form(self.current_property_id)
+        else:
+            QMessageBox.information(self, "情報", "詳細を表示する物件を選択してください。")
+    
+    def filter_properties(self):
+        """物件一覧をフィルタリング"""
+        search_text = self.search_edit.text().lower()
+        
+        for row in range(self.property_table.rowCount()):
+            property_name = self.property_table.item(row, 1)
+            address = self.property_table.item(row, 2)
+            management_type = self.property_table.item(row, 3)
+            
+            # 検索テキストでフィルタリング
+            text_match = (property_name and search_text in property_name.text().lower()) or \
+                        (address and search_text in address.text().lower())
+            
+            # 管理形態でフィルタリング
+            management_match = True  # デフォルトで表示
+            
+            self.property_table.setRowHidden(row, not (text_match and management_match))
+    
+    def on_property_selection_changed(self):
+        """物件選択が変更された時の処理"""
+        current_row = self.property_table.currentRow()
+        if current_row >= 0:
+            id_item = self.property_table.item(current_row, 0)
+            if id_item:
+                self.current_property_id = int(id_item.text())
+                print(f"選択された物件ID: {self.current_property_id}")
+        else:
+            self.current_property_id = None
+            print("物件選択が解除されました")
+    
+    def load_property_to_form(self, property_id):
+        """物件情報をフォームに読み込み"""
+        try:
+            property_data = Property.get_by_id(property_id)
+            if property_data:
+                self.property_name_edit.setText(property_data.get('name', ''))
+                self.address_edit.setPlainText(property_data.get('address', ''))
+                self.structure_edit.setText(property_data.get('structure', ''))
+                self.registry_owner_edit.setText(property_data.get('registry_owner', ''))
+                self.notes_edit.setPlainText(property_data.get('notes', ''))
+                
+                # 管理形態
+                management_type = property_data.get('management_type', '自社管理')
+                index = self.management_type_combo.findText(management_type)
+                if index >= 0:
+                    self.management_type_combo.setCurrentIndex(index)
+                
+                # 募集中部屋数
+                available_rooms = property_data.get('available_rooms', 0)
+                self.available_rooms_spin.setValue(available_rooms)
+                
+                # 更新予定部屋数
+                renewal_rooms = property_data.get('renewal_rooms', 0)
+                self.renewal_rooms_spin.setValue(renewal_rooms)
+                
+                # 管理会社
+                management_company = property_data.get('management_company', '')
+                self.management_company_edit.setText(management_company)
+                
+                print(f"物件情報をフォームに読み込みました: {property_data.get('name')}")
+            else:
+                print(f"物件ID {property_id} のデータが見つかりません")
+        except Exception as e:
+            print(f"物件情報読み込みエラー: {str(e)}")
