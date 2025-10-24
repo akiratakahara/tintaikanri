@@ -17,6 +17,29 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # ModernMainWindowを直接import
 from modern_main_window import ModernMainWindow
 from models import create_tables
+from license_manager import LicenseManager
+from license_dialog import LicenseDialog
+
+def check_license():
+    """ライセンスまたはトライアルをチェック"""
+    manager = LicenseManager()
+
+    # ライセンスまたはトライアルが有効かチェック
+    valid, message, license_type = manager.is_licensed()
+
+    if valid:
+        if license_type == 'trial':
+            # トライアル版の場合、メッセージを表示
+            QMessageBox.information(
+                None,
+                "トライアル版",
+                message + "\n\n製品版ライセンスのご購入をご検討ください。"
+            )
+        return True
+
+    # ライセンスダイアログを表示
+    dialog = LicenseDialog()
+    return dialog.exec() == QDialog.DialogCode.Accepted
 
 def main():
     """メイン関数"""
@@ -29,8 +52,13 @@ def main():
                 sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'ignore')
         except:
             pass
-    
+
     app = QApplication(sys.argv)
+
+    # ライセンスチェック
+    if not check_license():
+        print("ライセンス認証がキャンセルされました")
+        sys.exit(0)
     
     # 高DPI対応（PyQt6では自動的に有効）
     try:
