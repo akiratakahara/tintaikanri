@@ -24,6 +24,18 @@ except ImportError:
     OCR_AVAILABLE = False
     print("注意: 図面OCR機能が利用できません")
 
+# マウスホイール無効化SpinBox
+class NoWheelSpinBox(QSpinBox):
+    """マウスホイールによる値変更を無効化したSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
+class NoWheelDoubleSpinBox(QDoubleSpinBox):
+    """マウスホイールによる値変更を無効化したDoubleSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
+
 class FloorplanOCRWorker(QThread):
     """募集図面OCR処理を非同期で実行するワーカースレッド"""
     finished = pyqtSignal(list)  # OCR結果
@@ -89,9 +101,9 @@ class UnitTab(QWidget):
         
         # 基本情報
         self.room_number_edit = QLineEdit()
-        self.floor_spin = QSpinBox()
+        self.floor_spin = NoWheelSpinBox()
         self.floor_spin.setRange(1, 100)
-        self.area_spin = QSpinBox()
+        self.area_spin = NoWheelSpinBox()
         self.area_spin.setRange(1, 1000)
         self.area_spin.setSuffix(" ㎡")
         
@@ -105,7 +117,7 @@ class UnitTab(QWidget):
         form_layout.addRow("使用制限:", self.use_restrictions_edit)
         
         # 設備・条件
-        self.power_capacity_spin = QSpinBox()
+        self.power_capacity_spin = NoWheelSpinBox()
         self.power_capacity_spin.setRange(0, 1000)
         self.power_capacity_spin.setSuffix(" kW")
         

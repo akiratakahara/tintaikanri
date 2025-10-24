@@ -76,10 +76,33 @@ logs/
 # test_files/
 # debug_files/
 
-# Property and contract documents (optional - remove if you want to include them)
-# property_documents/
-# contract_documents/
+# Property and contract documents
+property_documents/
+contract_documents/
+*.pdf
+*.PDF
 
-# Batch files (optional - remove if you want to include them)
-# *.bat
+# Database backups
+database_backups/
+
+# Development and test scripts
+analyze_*.py
+check_*.py
+check_*.bat
+fix_*.py
+find_*.py
+list_*.py
+migrate_*.py
+remove_*.py
+install_*.py
+install_*.md
+backup_database.py
+contract_ocr.py
+disable_wheel_on_spinboxes.py
+debug_log.txt
+nul
+
+# External tools
+poppler/
+tesseract/
 

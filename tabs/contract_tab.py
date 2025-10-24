@@ -10,6 +10,18 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models import TenantContract, Unit, Property
 
+# マウスホイール無効化SpinBox
+class NoWheelSpinBox(QSpinBox):
+    """マウスホイールによる値変更を無効化したSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
+class NoWheelDoubleSpinBox(QDoubleSpinBox):
+    """マウスホイールによる値変更を無効化したDoubleSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
+
 class ContractTab(QWidget):
     """契約管理タブ"""
     
@@ -31,13 +43,13 @@ class ContractTab(QWidget):
         self.start_date_edit.setDate(QDate.currentDate())
         self.end_date_edit = QDateEdit()
         self.end_date_edit.setDate(QDate.currentDate().addYears(2))
-        self.rent_spin = QSpinBox()
+        self.rent_spin = NoWheelSpinBox()
         self.rent_spin.setMaximum(999999)
-        self.maintenance_fee_spin = QSpinBox()
+        self.maintenance_fee_spin = NoWheelSpinBox()
         self.maintenance_fee_spin.setMaximum(99999)
-        self.security_deposit_spin = QSpinBox()
+        self.security_deposit_spin = NoWheelSpinBox()
         self.security_deposit_spin.setMaximum(999999)
-        self.key_money_spin = QSpinBox()
+        self.key_money_spin = NoWheelSpinBox()
         self.key_money_spin.setMaximum(999999)
         self.renewal_method_edit = QLineEdit()
         self.insurance_flag_check = QCheckBox("保険加入")

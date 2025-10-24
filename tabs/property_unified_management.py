@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
                              QStackedWidget, QScrollArea, QDialog, QDialogButtonBox,
                              QHeaderView)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QFont, QPixmap, QIcon
+from PyQt6.QtGui import QFont, QPixmap, QIcon, QColor
 import sys
 import os
 # プロジェクトルートをPythonパスに追加
@@ -30,8 +30,23 @@ from modern_ui_system import ModernUITheme
 # UI Helper関数
 from ui.ui_helpers import make_page_container, make_scroll_page
 
+# マウスホイール無効化SpinBox
+class NoWheelSpinBox(QSpinBox):
+    """マウスホイールによる値変更を無効化したSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
+class NoWheelDoubleSpinBox(QDoubleSpinBox):
+    """マウスホイールによる値変更を無効化したDoubleSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
+
 class PropertyUnifiedManagement(QWidget):
     """物件統合管理 - 登録から管理まで一元化"""
+    
+    # シグナル定義
+    property_updated = pyqtSignal()
     
     def __init__(self):
         super().__init__()
@@ -58,21 +73,82 @@ class PropertyUnifiedManagement(QWidget):
             else:
                 # 物件全体の資料ディレクトリ
                 docs_dir = os.path.join(self.document_storage_path, f"property_{property_id}", "general")
-            
+
             if not os.path.exists(docs_dir):
                 return 0
-            
+
             # ファイル数をカウント
             count = 0
             for item in os.listdir(docs_dir):
                 if os.path.isfile(os.path.join(docs_dir, item)):
                     count += 1
-            
+
             return count
-            
+
         except Exception as e:
             print(f"資料数取得エラー: {e}")
             return 0
+
+    def get_unit_status(self, unit_id):
+        """部屋のステータスを取得（募集中/申込あり/賃貸中）"""
+        try:
+            from models import TenantContract
+
+            # 契約を取得
+            contracts = TenantContract.get_all()
+            active_contracts = [c for c in contracts if c.get('unit_id') == unit_id]
+
+            if not active_contracts:
+                return "募集中"
+
+            # contract_statusフィールドでステータスを判定
+            for contract in active_contracts:
+                status = contract.get('contract_status', 'active')
+
+                # pending（申込あり）が最優先
+                if status == 'pending':
+                    return "申込あり"
+                # active（賃貸中）
+                elif status == 'active':
+                    return "賃貸中"
+
+            # draft, expired, cancelledの場合は募集中
+            return "募集中"
+
+        except Exception as e:
+            print(f"ステータス取得エラー: {e}")
+            return "不明"
+
+    def get_property_status_summary(self, property_id):
+        """物件全体のステータスサマリーを取得"""
+        try:
+            units = Unit.get_by_property(property_id)
+            if not units:
+                return "-"
+
+            total = len(units)
+            rented = 0
+            recruiting = 0
+            application = 0
+
+            for unit in units:
+                status = self.get_unit_status(unit['id'])
+                if status == "賃貸中":
+                    rented += 1
+                elif status == "申込あり":
+                    application += 1
+                elif status == "募集中":
+                    recruiting += 1
+
+            # 申込ありがある場合はそれも表示
+            if application > 0:
+                return f"賃貸中:{rented} / 申込:{application} / 募集:{recruiting} / 全{total}室"
+            else:
+                return f"賃貸中:{rented} / 募集中:{recruiting} / 全{total}室"
+
+        except Exception as e:
+            print(f"物件ステータスサマリー取得エラー: {e}")
+            return "-"
     
     def clear_selection(self):
         """選択状態をクリア"""
@@ -148,10 +224,15 @@ class PropertyUnifiedManagement(QWidget):
         view_details_btn = QPushButton("👁️ 詳細表示")
         view_details_btn.setStyleSheet(ModernStyles.get_button_styles())
         view_details_btn.clicked.connect(self.show_property_details)
-        
+
+        export_csv_btn = QPushButton("📊 CSV出力")
+        export_csv_btn.setStyleSheet(ModernStyles.get_button_styles())
+        export_csv_btn.clicked.connect(self.export_to_csv)
+
         quick_action_layout.addWidget(new_property_btn)
         quick_action_layout.addWidget(refresh_btn)
         quick_action_layout.addWidget(view_details_btn)
+        quick_action_layout.addWidget(export_csv_btn)
         quick_action_layout.addStretch()
         
         quick_action_group.setLayout(quick_action_layout)
@@ -181,7 +262,10 @@ class PropertyUnifiedManagement(QWidget):
         
         # 物件ツリー（高さを調整）
         self.property_tree = QTreeWidget()
-        self.property_tree.setHeaderHidden(True)
+        self.property_tree.setColumnCount(2)  # 2カラム：名前、ステータス
+        self.property_tree.setHeaderLabels(["物件名 / 部屋番号", "ステータス"])
+        self.property_tree.setColumnWidth(0, 400)  # 名前カラムの幅
+        self.property_tree.setColumnWidth(1, 150)  # ステータスカラムの幅
         self.property_tree.itemClicked.connect(self.on_tree_item_clicked)
         self.property_tree.setMinimumHeight(300)
         
@@ -843,6 +927,9 @@ class PropertyUnifiedManagement(QWidget):
                 self.load_property_tree()
                 QMessageBox.information(self, "成功", "物件を削除しました。")
                 
+                # カレンダー更新のためのシグナル発信
+                self.property_updated.emit()
+                
             except Exception as e:
                 QMessageBox.critical(self, "エラー", f"物件削除中にエラーが発生しました: {str(e)}")
     
@@ -864,6 +951,9 @@ class PropertyUnifiedManagement(QWidget):
                 self.clear_selection()
                 self.load_property_tree()
                 QMessageBox.information(self, "成功", "部屋を削除しました。")
+                
+                # カレンダー更新のためのシグナル発信
+                self.property_updated.emit()
                 
             except Exception as e:
                 QMessageBox.critical(self, "エラー", f"部屋削除中にエラーが発生しました: {str(e)}")
@@ -908,9 +998,91 @@ class PropertyUnifiedManagement(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"資料一覧表示中にエラーが発生しました: {str(e)}")
     
+    def export_to_csv(self):
+        """物件・部屋データをCSV出力"""
+        try:
+            import csv
+            from PyQt6.QtWidgets import QFileDialog, QMessageBox
+
+            # 出力オプション選択ダイアログ
+            reply = QMessageBox.question(
+                self,
+                "CSV出力",
+                "物件情報と部屋情報の両方を出力しますか？\n\n「はい」: 物件と部屋の両方\n「いいえ」: 物件のみ",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Yes
+            )
+
+            if reply == QMessageBox.StandardButton.Cancel:
+                return
+
+            export_units = (reply == QMessageBox.StandardButton.Yes)
+
+            # ファイル保存ダイアログ
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "CSVファイルの保存", "物件一覧.csv", "CSV Files (*.csv)"
+            )
+
+            if not file_path:
+                return
+
+            # データ取得
+            properties = Property.get_all()
+
+            with open(file_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
+                writer = csv.writer(csvfile)
+
+                # 物件ヘッダー
+                property_headers = ["物件ID", "物件名", "住所", "建築年", "構造", "階数", "総戸数", "登録日"]
+                if export_units:
+                    property_headers.extend(["部屋番号", "階数", "面積(㎡)", "用途制限", "備考"])
+
+                writer.writerow(property_headers)
+
+                # データ書き込み
+                for prop in properties:
+                    property_row = [
+                        prop.get('id', ''),
+                        prop.get('name', ''),
+                        prop.get('address', ''),
+                        prop.get('built_year', ''),
+                        prop.get('structure', ''),
+                        prop.get('floors', ''),
+                        prop.get('total_units', ''),
+                        prop.get('created_at', '')
+                    ]
+
+                    if export_units:
+                        # 部屋情報を取得
+                        units = Unit.get_by_property(prop['id'])
+                        if units:
+                            for unit in units:
+                                unit_row = property_row.copy()
+                                unit_row.extend([
+                                    unit.get('room_number', ''),
+                                    unit.get('floor', ''),
+                                    unit.get('area', ''),
+                                    unit.get('use_restrictions', ''),
+                                    unit.get('notes', '')
+                                ])
+                                writer.writerow(unit_row)
+                        else:
+                            # 部屋がない場合は物件情報のみ
+                            writer.writerow(property_row + ['', '', '', '', ''])
+                    else:
+                        writer.writerow(property_row)
+
+            from utils import MessageHelper
+            MessageHelper.show_success(self, f"CSVファイルを出力しました:\n{file_path}")
+
+        except Exception as e:
+            from utils import MessageHelper
+            MessageHelper.show_error(self, f"CSV出力中にエラーが発生しました: {str(e)}")
+
     def export_property_data(self):
-        QMessageBox.information(self, "機能準備中", "データ出力機能は準備中です。")
-    
+        """物件データ出力（既存メソッド）"""
+        self.export_to_csv()
+
     def import_property_data(self):
         QMessageBox.information(self, "機能準備中", "一括取込機能は準備中です。")
     
@@ -925,20 +1097,25 @@ class PropertyUnifiedManagement(QWidget):
             for property_data in properties:
                 # 物件アイテムを作成
                 property_item = QTreeWidgetItem()
-                property_item.setText(0, f"🏢 {property_data['name']}")
-                
+
+                # 物件名と資料数
+                doc_count = self.get_document_count(property_data['id'])
+                property_name = f"🏢 {property_data['name']}"
+                if doc_count > 0:
+                    property_name += f" 📄({doc_count})"
+                property_item.setText(0, property_name)
+
+                # ステータスサマリー
+                status_summary = self.get_property_status_summary(property_data['id'])
+                property_item.setText(1, status_summary)
+
                 # 物件データを設定
                 property_item.setData(0, Qt.ItemDataRole.UserRole, {
                     'type': 'property',
                     'id': property_data['id'],
                     'data': property_data
                 })
-                
-                # 物件の資料数を表示
-                doc_count = self.get_document_count(property_data['id'])
-                if doc_count > 0:
-                    property_item.setText(0, f"🏢 {property_data['name']} 📄({doc_count})")
-                
+
                 self.property_tree.addTopLevelItem(property_item)
                 
                 # 部屋一覧を取得
@@ -948,8 +1125,26 @@ class PropertyUnifiedManagement(QWidget):
                     for unit_data in units:
                         # 部屋アイテムを作成
                         unit_item = QTreeWidgetItem()
-                        unit_item.setText(0, f"🚪 {unit_data['room_number']}")
-                        
+
+                        # 部屋番号と資料数
+                        unit_name = f"🚪 {unit_data['room_number']}"
+                        unit_doc_count = self.get_document_count(property_data['id'], unit_data['id'])
+                        if unit_doc_count > 0:
+                            unit_name += f" 📄({unit_doc_count})"
+                        unit_item.setText(0, unit_name)
+
+                        # 部屋のステータス（募集中/賃貸中）
+                        unit_status = self.get_unit_status(unit_data['id'])
+                        unit_item.setText(1, unit_status)
+
+                        # ステータスに応じた色分け
+                        if unit_status == "賃貸中":
+                            unit_item.setForeground(1, QColor("#4CAF50"))  # 緑色
+                        elif unit_status == "募集中":
+                            unit_item.setForeground(1, QColor("#FF9800"))  # オレンジ色
+                        elif unit_status == "申込あり":
+                            unit_item.setForeground(1, QColor("#2196F3"))  # 青色
+
                         # 部屋データを設定
                         unit_item.setData(0, Qt.ItemDataRole.UserRole, {
                             'type': 'unit',
@@ -957,12 +1152,7 @@ class PropertyUnifiedManagement(QWidget):
                             'property_id': property_data['id'],
                             'data': unit_data
                         })
-                        
-                        # 部屋の資料数を表示
-                        unit_doc_count = self.get_document_count(property_data['id'], unit_data['id'])
-                        if unit_doc_count > 0:
-                            unit_item.setText(0, f"🚪 {unit_data['room_number']} 📄({unit_doc_count})")
-                        
+
                         property_item.addChild(unit_item)
                         
                 except Exception as e:
@@ -1055,6 +1245,7 @@ class DocumentUploadDialog(QDialog):
         self.property_id = property_id
         self.unit_id = unit_id
         self.document_storage_path = "property_documents"
+        self.selected_files = []  # 複数ファイル対応
         self.init_ui()
     
     def init_ui(self):
@@ -1084,25 +1275,34 @@ class DocumentUploadDialog(QDialog):
         # ファイル選択
         file_group = QGroupBox("ファイル選択")
         file_layout = QVBoxLayout()
-        
+
+        # ファイル選択ボタン
         file_select_layout = QHBoxLayout()
-        self.file_path_edit = QLineEdit()
-        self.file_path_edit.setReadOnly(True)
-        self.file_path_edit.setPlaceholderText("アップロードするファイルを選択してください")
-        
-        browse_btn = QPushButton("ファイル選択")
-        browse_btn.clicked.connect(self.browse_file)
-        
-        file_select_layout.addWidget(self.file_path_edit, 1)
+        browse_btn = QPushButton("📁 ファイル選択（複数可）")
+        browse_btn.clicked.connect(self.browse_files)
         file_select_layout.addWidget(browse_btn)
-        
+        file_select_layout.addStretch()
         file_layout.addLayout(file_select_layout)
-        
+
+        # 選択されたファイルのリスト表示
+        self.files_list = QListWidget()
+        self.files_list.setMaximumHeight(150)
+        self.files_list.setAlternatingRowColors(True)
+        file_layout.addWidget(self.files_list)
+
+        # 削除ボタン
+        remove_btn_layout = QHBoxLayout()
+        remove_btn = QPushButton("選択ファイルを削除")
+        remove_btn.clicked.connect(self.remove_selected_file)
+        remove_btn_layout.addStretch()
+        remove_btn_layout.addWidget(remove_btn)
+        file_layout.addLayout(remove_btn_layout)
+
         # ファイル情報表示
         self.file_info_label = QLabel("ファイルが選択されていません")
         self.file_info_label.setStyleSheet("color: gray;")
         file_layout.addWidget(self.file_info_label)
-        
+
         file_group.setLayout(file_layout)
         layout.addWidget(file_group)
         
@@ -1115,7 +1315,9 @@ class DocumentUploadDialog(QDialog):
             "建物登記簿", "土地登記簿", "重要事項説明書", "賃貸契約書",
             "管理規約", "修繕積立金規約", "駐車場規約", "その他"
         ])
-        
+        # デフォルトを「その他」に設定
+        self.category_combo.setCurrentText("その他")
+
         category_layout.addWidget(self.category_combo)
         category_group.setLayout(category_layout)
         layout.addWidget(category_group)
@@ -1148,10 +1350,10 @@ class DocumentUploadDialog(QDialog):
         
         layout.addLayout(button_layout)
     
-    def browse_file(self):
-        """ファイル選択ダイアログを表示"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "アップロードするファイルを選択", "",
+    def browse_files(self):
+        """複数ファイル選択ダイアログを表示"""
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self, "アップロードするファイルを選択（複数選択可）", "",
             "すべてのファイル (*.*);;"
             "PDFファイル (*.pdf);;"
             "画像ファイル (*.png *.jpg *.jpeg *.bmp *.tiff);;"
@@ -1159,43 +1361,57 @@ class DocumentUploadDialog(QDialog):
             "Excelファイル (*.xls *.xlsx);;"
             "テキストファイル (*.txt)"
         )
-        
-        if file_path:
-            self.file_path_edit.setText(file_path)
-            self.update_file_info(file_path)
+
+        if file_paths:
+            for file_path in file_paths:
+                if file_path not in self.selected_files:
+                    self.selected_files.append(file_path)
+                    self.files_list.addItem(os.path.basename(file_path))
+
+            self.update_files_info()
+
+    def remove_selected_file(self):
+        """選択されたファイルをリストから削除"""
+        current_row = self.files_list.currentRow()
+        if current_row >= 0:
+            self.files_list.takeItem(current_row)
+            self.selected_files.pop(current_row)
+            self.update_files_info()
     
-    def update_file_info(self, file_path):
+    def update_files_info(self):
         """ファイル情報を更新"""
+        if not self.selected_files:
+            self.file_info_label.setText("ファイルが選択されていません")
+            self.file_info_label.setStyleSheet("color: gray;")
+            return
+
+        total_size = 0
         try:
-            file_size = os.path.getsize(file_path)
-            file_name = os.path.basename(file_path)
-            
+            for file_path in self.selected_files:
+                total_size += os.path.getsize(file_path)
+
             # ファイルサイズを適切な単位で表示
-            if file_size < 1024:
-                size_str = f"{file_size} B"
-            elif file_size < 1024 * 1024:
-                size_str = f"{file_size / 1024:.1f} KB"
+            if total_size < 1024:
+                size_str = f"{total_size} B"
+            elif total_size < 1024 * 1024:
+                size_str = f"{total_size / 1024:.1f} KB"
             else:
-                size_str = f"{file_size / (1024 * 1024):.1f} MB"
-            
-            self.file_info_label.setText(f"ファイル名: {file_name}\nサイズ: {size_str}")
+                size_str = f"{total_size / (1024 * 1024):.1f} MB"
+
+            file_count = len(self.selected_files)
+            self.file_info_label.setText(f"{file_count}個のファイルを選択（合計サイズ: {size_str}）")
             self.file_info_label.setStyleSheet("color: black;")
-            
+
         except Exception as e:
             self.file_info_label.setText(f"ファイル情報取得エラー: {str(e)}")
             self.file_info_label.setStyleSheet("color: red;")
     
     def upload_file(self):
-        """ファイルをアップロード"""
-        file_path = self.file_path_edit.text().strip()
-        if not file_path:
+        """複数ファイルをアップロード"""
+        if not self.selected_files:
             QMessageBox.warning(self, "警告", "ファイルを選択してください。")
             return
-        
-        if not os.path.exists(file_path):
-            QMessageBox.warning(self, "警告", "選択されたファイルが存在しません。")
-            return
-        
+
         try:
             # 保存先ディレクトリを作成
             if self.unit_id:
@@ -1204,39 +1420,49 @@ class DocumentUploadDialog(QDialog):
             else:
                 # 物件全体の資料ディレクトリ
                 save_dir = os.path.join(self.document_storage_path, f"property_{self.property_id}", "general")
-            
+
             os.makedirs(save_dir, exist_ok=True)
-            
-            # ファイル名を取得
-            file_name = os.path.basename(file_path)
+
             category = self.category_combo.currentText()
             notes = self.notes_edit.toPlainText().strip()
-            
-            # ファイル名にカテゴリとタイムスタンプを追加
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            new_file_name = f"{category}_{timestamp}_{file_name}"
-            
-            # ファイルをコピー
-            dest_path = os.path.join(save_dir, new_file_name)
-            shutil.copy2(file_path, dest_path)
-            
-            # メタデータファイルを作成
-            metadata = {
-                "original_name": file_name,
-                "category": category,
-                "notes": notes,
-                "upload_date": datetime.now().isoformat(),
-                "file_size": os.path.getsize(file_path)
-            }
-            
-            metadata_path = os.path.join(save_dir, f"{new_file_name}.meta.json")
-            with open(metadata_path, 'w', encoding='utf-8') as f:
-                import json
-                json.dump(metadata, f, ensure_ascii=False, indent=2)
-            
-            QMessageBox.information(self, "成功", f"資料をアップロードしました。\n保存先: {dest_path}")
+
+            # 複数ファイルを順番にアップロード
+            uploaded_count = 0
+            for file_path in self.selected_files:
+                if not os.path.exists(file_path):
+                    QMessageBox.warning(self, "警告", f"ファイルが存在しません: {os.path.basename(file_path)}")
+                    continue
+
+                # ファイル名を取得
+                file_name = os.path.basename(file_path)
+
+                # ファイル名にカテゴリとタイムスタンプを追加
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                new_file_name = f"{category}_{timestamp}_{file_name}"
+
+                # ファイルをコピー
+                dest_path = os.path.join(save_dir, new_file_name)
+                shutil.copy2(file_path, dest_path)
+
+                # メタデータファイルを作成
+                metadata = {
+                    "original_name": file_name,
+                    "category": category,
+                    "notes": notes,
+                    "upload_date": datetime.now().isoformat(),
+                    "file_size": os.path.getsize(file_path)
+                }
+
+                metadata_path = os.path.join(save_dir, f"{new_file_name}.meta.json")
+                with open(metadata_path, 'w', encoding='utf-8') as f:
+                    import json
+                    json.dump(metadata, f, ensure_ascii=False, indent=2)
+
+                uploaded_count += 1
+
+            QMessageBox.information(self, "成功", f"{uploaded_count}個の資料をアップロードしました。")
             self.accept()
-            
+
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"ファイルアップロード中にエラーが発生しました: {str(e)}")
 
@@ -1640,7 +1866,7 @@ class UnitEditDialog(QDialog):
         self.floor_edit = QLineEdit()
         self.floor_edit.setPlaceholderText("例: 1, 1F, B1")
         
-        self.area_spin = QDoubleSpinBox()
+        self.area_spin = NoWheelDoubleSpinBox()
         self.area_spin.setRange(1.0, 1000.0)
         self.area_spin.setSuffix(" ㎡")
         self.area_spin.setDecimals(2)
@@ -1648,7 +1874,7 @@ class UnitEditDialog(QDialog):
         self.use_restrictions_edit = QLineEdit()
         self.use_restrictions_edit.setPlaceholderText("例: 事務所専用、飲食不可")
         
-        self.power_capacity_spin = QSpinBox()
+        self.power_capacity_spin = NoWheelSpinBox()
         self.power_capacity_spin.setRange(0, 1000)
         self.power_capacity_spin.setSuffix(" kW")
         
@@ -1755,7 +1981,7 @@ class UnitAddDialog(QDialog):
         self.floor_edit = QLineEdit()
         self.floor_edit.setPlaceholderText("例: 1, 1F, B1")
         
-        self.area_spin = QDoubleSpinBox()
+        self.area_spin = NoWheelDoubleSpinBox()
         self.area_spin.setRange(1.0, 1000.0)
         self.area_spin.setSuffix(" ㎡")
         self.area_spin.setDecimals(2)
@@ -1764,7 +1990,7 @@ class UnitAddDialog(QDialog):
         self.use_restrictions_edit = QLineEdit()
         self.use_restrictions_edit.setPlaceholderText("例: 事務所専用、飲食不可")
         
-        self.power_capacity_spin = QSpinBox()
+        self.power_capacity_spin = NoWheelSpinBox()
         self.power_capacity_spin.setRange(0, 1000)
         self.power_capacity_spin.setSuffix(" kW")
         

@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
                              QTableWidgetItem, QPushButton, QLabel, QLineEdit, 
                              QTextEdit, QMessageBox, QGroupBox, QFormLayout, 
-                             QSpinBox, QTabWidget, QScrollArea, QFileDialog, QComboBox)
+                             QSpinBox, QDoubleSpinBox, QTabWidget, QScrollArea, QFileDialog, QComboBox)
 import os
 import sys
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
@@ -18,6 +18,18 @@ try:
 except ImportError:
     OCR_AVAILABLE = False
     print("注意: OCR機能が利用できません（Google Generative AI未インストール）")
+
+# マウスホイール無効化SpinBox
+class NoWheelSpinBox(QSpinBox):
+    """マウスホイールによる値変更を無効化したSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
+class NoWheelDoubleSpinBox(QDoubleSpinBox):
+    """マウスホイールによる値変更を無効化したDoubleSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
 
 class RegistryOCRWorker(QThread):
     """登記簿OCR処理を非同期で実行するワーカースレッド"""
@@ -280,11 +292,11 @@ class PropertyTab(QWidget):
         self.management_type_combo = QComboBox()
         self.management_type_combo.addItems(["自社管理", "他社仲介", "共同管理"])
         
-        self.available_rooms_spin = QSpinBox()
+        self.available_rooms_spin = NoWheelSpinBox()
         self.available_rooms_spin.setRange(0, 999)
         self.available_rooms_spin.setSuffix(" 室")
         
-        self.renewal_rooms_spin = QSpinBox()
+        self.renewal_rooms_spin = NoWheelSpinBox()
         self.renewal_rooms_spin.setRange(0, 999)
         self.renewal_rooms_spin.setSuffix(" 室")
         
@@ -377,9 +389,9 @@ class PropertyTab(QWidget):
         self.building_address_edit = QTextEdit()
         self.building_address_edit.setMaximumHeight(60)
         self.building_structure_edit = QLineEdit()
-        self.building_floors_spin = QSpinBox()
+        self.building_floors_spin = NoWheelSpinBox()
         self.building_floors_spin.setMaximum(999)
-        self.building_area_spin = QSpinBox()
+        self.building_area_spin = NoWheelSpinBox()
         self.building_area_spin.setMaximum(99999)
         self.building_date_edit = QLineEdit()
         self.building_date_edit.setPlaceholderText("例: 2020年3月")
@@ -460,7 +472,7 @@ class PropertyTab(QWidget):
         self.land_owner_edit = QLineEdit()
         self.land_address_edit = QTextEdit()
         self.land_address_edit.setMaximumHeight(60)
-        self.land_area_spin = QSpinBox()
+        self.land_area_spin = NoWheelSpinBox()
         self.land_area_spin.setMaximum(99999)
         self.land_use_edit = QLineEdit()
         self.land_registry_date_edit = QLineEdit()
@@ -557,11 +569,11 @@ class PropertyTab(QWidget):
         self.floor_name_edit = QLineEdit()
         self.floor_name_edit.setPlaceholderText("例: 1階、2階、3階")
         
-        self.floor_total_area_spin = QSpinBox()
+        self.floor_total_area_spin = NoWheelSpinBox()
         self.floor_total_area_spin.setRange(0, 99999)
         self.floor_total_area_spin.setSuffix(" ㎡")
         
-        self.floor_registry_area_spin = QSpinBox()
+        self.floor_registry_area_spin = NoWheelSpinBox()
         self.floor_registry_area_spin.setRange(0, 99999)
         self.floor_registry_area_spin.setSuffix(" ㎡")
         
@@ -569,11 +581,11 @@ class PropertyTab(QWidget):
         self.floor_usage_combo.addItems(["オフィス", "店舗", "住宅", "倉庫", "駐車場", "その他"])
         self.floor_usage_combo.setEditable(True)
         
-        self.floor_available_area_spin = QSpinBox()
+        self.floor_available_area_spin = NoWheelSpinBox()
         self.floor_available_area_spin.setRange(0, 99999)
         self.floor_available_area_spin.setSuffix(" ㎡")
         
-        self.floor_occupied_area_spin = QSpinBox()
+        self.floor_occupied_area_spin = NoWheelSpinBox()
         self.floor_occupied_area_spin.setRange(0, 99999)
         self.floor_occupied_area_spin.setSuffix(" ㎡")
         
@@ -661,7 +673,7 @@ class PropertyTab(QWidget):
         self.occupancy_tenant_combo = QComboBox()
         self.occupancy_tenant_combo.addItem("テナントを選択", None)
         
-        self.occupancy_area_spin = QSpinBox()
+        self.occupancy_area_spin = NoWheelSpinBox()
         self.occupancy_area_spin.setRange(0, 99999)
         self.occupancy_area_spin.setSuffix(" ㎡")
         
@@ -671,11 +683,11 @@ class PropertyTab(QWidget):
         self.occupancy_end_date_edit = QLineEdit()
         self.occupancy_end_date_edit.setPlaceholderText("例: 2026-12-31")
         
-        self.occupancy_rent_spin = QSpinBox()
+        self.occupancy_rent_spin = NoWheelSpinBox()
         self.occupancy_rent_spin.setRange(0, 9999999)
         self.occupancy_rent_spin.setSuffix(" 円")
         
-        self.occupancy_maintenance_spin = QSpinBox()
+        self.occupancy_maintenance_spin = NoWheelSpinBox()
         self.occupancy_maintenance_spin.setRange(0, 999999)
         self.occupancy_maintenance_spin.setSuffix(" 円")
         
@@ -734,15 +746,15 @@ class PropertyTab(QWidget):
         self.recruitment_type_combo = QComboBox()
         self.recruitment_type_combo.addItems(["新規募集", "更新募集", "転貸募集"])
         
-        self.recruitment_area_spin = QSpinBox()
+        self.recruitment_area_spin = NoWheelSpinBox()
         self.recruitment_area_spin.setRange(0, 99999)
         self.recruitment_area_spin.setSuffix(" ㎡")
         
-        self.recruitment_rent_spin = QSpinBox()
+        self.recruitment_rent_spin = NoWheelSpinBox()
         self.recruitment_rent_spin.setRange(0, 9999999)
         self.recruitment_rent_spin.setSuffix(" 円")
         
-        self.recruitment_maintenance_spin = QSpinBox()
+        self.recruitment_maintenance_spin = NoWheelSpinBox()
         self.recruitment_maintenance_spin.setRange(0, 999999)
         self.recruitment_maintenance_spin.setSuffix(" 円")
         
@@ -1629,7 +1641,7 @@ class PropertyTab(QWidget):
         self.occupancy_tenant_combo = QComboBox()
         self.occupancy_tenant_combo.addItem("テナントを選択", None)
         
-        self.occupancy_area_spin = QSpinBox()
+        self.occupancy_area_spin = NoWheelSpinBox()
         self.occupancy_area_spin.setRange(0, 99999)
         self.occupancy_area_spin.setSuffix(" ㎡")
         
@@ -1639,11 +1651,11 @@ class PropertyTab(QWidget):
         self.occupancy_end_date_edit = QLineEdit()
         self.occupancy_end_date_edit.setPlaceholderText("例: 2026-12-31")
         
-        self.occupancy_rent_spin = QSpinBox()
+        self.occupancy_rent_spin = NoWheelSpinBox()
         self.occupancy_rent_spin.setRange(0, 9999999)
         self.occupancy_rent_spin.setSuffix(" 円")
         
-        self.occupancy_maintenance_spin = QSpinBox()
+        self.occupancy_maintenance_spin = NoWheelSpinBox()
         self.occupancy_maintenance_spin.setRange(0, 999999)
         self.occupancy_maintenance_spin.setSuffix(" 円")
         
@@ -1702,15 +1714,15 @@ class PropertyTab(QWidget):
         self.recruitment_type_combo = QComboBox()
         self.recruitment_type_combo.addItems(["新規募集", "更新募集", "転貸募集"])
         
-        self.recruitment_area_spin = QSpinBox()
+        self.recruitment_area_spin = NoWheelSpinBox()
         self.recruitment_area_spin.setRange(0, 99999)
         self.recruitment_area_spin.setSuffix(" ㎡")
         
-        self.recruitment_rent_spin = QSpinBox()
+        self.recruitment_rent_spin = NoWheelSpinBox()
         self.recruitment_rent_spin.setRange(0, 9999999)
         self.recruitment_rent_spin.setSuffix(" 円")
         
-        self.recruitment_maintenance_spin = QSpinBox()
+        self.recruitment_maintenance_spin = NoWheelSpinBox()
         self.recruitment_maintenance_spin.setRange(0, 999999)
         self.recruitment_maintenance_spin.setSuffix(" 円")
         

@@ -143,12 +143,31 @@ class TaskTabBasic(QWidget):
         
         self.clear_button = QPushButton("🔄 クリア")
         self.clear_button.clicked.connect(self.clear_form)
-        
+
+        self.export_button = QPushButton("📊 CSV出力")
+        self.export_button.clicked.connect(self.export_to_csv)
+        self.export_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2563eb;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-size: 13px;
+                font-weight: 500;
+                min-height: 32px;
+            }
+            QPushButton:hover {
+                background-color: #1d4ed8;
+            }
+        """)
+
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.edit_button)
         button_layout.addWidget(self.complete_button)
         button_layout.addWidget(self.delete_button)
         button_layout.addWidget(self.clear_button)
+        button_layout.addWidget(self.export_button)
         button_layout.addStretch()
         
         # フィルター（2つに整理）
@@ -600,8 +619,59 @@ class TaskTabBasic(QWidget):
         self.add_button.setText("✅ 登録")
         self.add_button.clicked.disconnect()
         self.add_button.clicked.connect(self.add_task)
-        
+
         # 新規作成時は完了/削除ボタンを無効化
         self.edit_button.setEnabled(False)
         self.complete_button.setEnabled(False)
         self.delete_button.setEnabled(False)
+
+    def export_to_csv(self):
+        """タスク一覧をCSV出力"""
+        try:
+            import csv
+            from PyQt6.QtWidgets import QFileDialog
+
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "CSVファイルの保存", "タスク一覧.csv", "CSV Files (*.csv)"
+            )
+
+            if file_path:
+                with open(file_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
+                    writer = csv.writer(csvfile)
+
+                    # ヘッダー
+                    writer.writerow([
+                        "ID", "顧客名", "物件名", "部屋番号", "タスク種別",
+                        "タイトル", "説明", "期限", "優先度", "担当者", "状態", "登録日"
+                    ])
+
+                    # データ（表示されている行から元データを取得）
+                    for row in range(self.table.rowCount()):
+                        if not self.table.isRowHidden(row):
+                            # テーブルからIDを取得
+                            id_item = self.table.item(row, 0)
+                            if id_item:
+                                task_id = int(id_item.text())
+                                # 元データから該当レコードを検索
+                                task = next((t for t in self.tasks if t.get('id') == task_id), None)
+                                if task:
+                                    row_data = [
+                                        task.get('id', ''),
+                                        task.get('customer_name', ''),
+                                        task.get('property_name', ''),
+                                        task.get('unit_number', ''),
+                                        task.get('task_type', ''),
+                                        task.get('title', ''),
+                                        task.get('description', ''),
+                                        task.get('due_date', ''),
+                                        task.get('priority', ''),
+                                        task.get('assigned_to', ''),
+                                        task.get('status', ''),
+                                        task.get('created_at', '')
+                                    ]
+                                    writer.writerow(row_data)
+
+                MessageHelper.show_success(self, f"CSVファイルを出力しました:\n{file_path}")
+
+        except Exception as e:
+            MessageHelper.show_error(self, f"CSV出力中にエラーが発生しました: {str(e)}")

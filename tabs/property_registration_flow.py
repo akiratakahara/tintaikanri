@@ -22,6 +22,18 @@ from ui.ui_styles import ModernTheme, ModernStyles
 # UI Helper関数
 from ui.ui_helpers import make_page_container, make_scroll_page, make_collapsible
 
+# マウスホイール無効化SpinBox
+class NoWheelSpinBox(QSpinBox):
+    """マウスホイールによる値変更を無効化したSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
+class NoWheelDoubleSpinBox(QDoubleSpinBox):
+    """マウスホイールによる値変更を無効化したDoubleSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
+
 class PropertyRegistrationFlow(QWidget):
     """物件・部屋登録フロー統合管理"""
     
@@ -284,16 +296,16 @@ class PropertyRegistrationFlow(QWidget):
         building_details_group = QGroupBox("建物詳細情報")
         building_details_layout = QFormLayout()
         
-        self.total_floors_spin = QSpinBox()
+        self.total_floors_spin = NoWheelSpinBox()
         self.total_floors_spin.setRange(1, 50)
         self.total_floors_spin.setValue(3)
         
-        self.total_area_spin = QDoubleSpinBox()
+        self.total_area_spin = NoWheelDoubleSpinBox()
         self.total_area_spin.setRange(10.0, 10000.0)
         self.total_area_spin.setSuffix(" ㎡")
         self.total_area_spin.setDecimals(2)
         
-        self.built_year_spin = QSpinBox()
+        self.built_year_spin = NoWheelSpinBox()
         self.built_year_spin.setRange(1950, 2030)
         self.built_year_spin.setValue(2020)
         
@@ -314,11 +326,11 @@ class PropertyRegistrationFlow(QWidget):
         single_building_layout = QFormLayout()
         
         self.rental_as_whole_check = QCheckBox("建物全体を一括賃貸")
-        self.monthly_rent_spin = QSpinBox()
+        self.monthly_rent_spin = NoWheelSpinBox()
         self.monthly_rent_spin.setRange(0, 10000000)
         self.monthly_rent_spin.setSuffix(" 円")
         
-        self.management_fee_spin = QSpinBox()
+        self.management_fee_spin = NoWheelSpinBox()
         self.management_fee_spin.setRange(0, 1000000)
         self.management_fee_spin.setSuffix(" 円")
         
@@ -724,7 +736,7 @@ class PropertyRegistrationFlow(QWidget):
         self.floor_edit = QLineEdit()
         self.floor_edit.setPlaceholderText("例: 1, 1F, B1")
         
-        self.room_area_spin = QDoubleSpinBox()
+        self.room_area_spin = NoWheelDoubleSpinBox()
         self.room_area_spin.setRange(1.0, 1000.0)
         self.room_area_spin.setSuffix(" ㎡")
         self.room_area_spin.setDecimals(2)

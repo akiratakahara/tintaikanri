@@ -7,7 +7,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
                              QTableWidgetItem, QPushButton, QLabel, QLineEdit, 
                              QTextEdit, QMessageBox, QGroupBox, QFormLayout, 
-                             QSpinBox, QTabWidget, QScrollArea, QFileDialog, 
+                             QSpinBox, QDoubleSpinBox, QTabWidget, QScrollArea, QFileDialog, 
                              QComboBox, QCheckBox, QDateEdit, QDialog, QDialogButtonBox,
                              QSplitter, QTreeWidget, QTreeWidgetItem, QHeaderView,
                              QProgressBar, QSlider, QFrame, QGridLayout, QListWidget,
@@ -21,6 +21,18 @@ from models import Property, Unit, Customer, TenantContract
 from utils import MessageHelper, DateHelper, FormatHelper, Validator
 
 # UI関連
+# マウスホイール無効化SpinBox
+class NoWheelSpinBox(QSpinBox):
+    """マウスホイールによる値変更を無効化したSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
+class NoWheelDoubleSpinBox(QDoubleSpinBox):
+    """マウスホイールによる値変更を無効化したDoubleSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
+
 class ModernStyles:
     @staticmethod
     def get_button_style(style_type):
@@ -510,24 +522,24 @@ class UnitEditDialog(QDialog):
         ])
         
         # 面積
-        self.area_spin = QSpinBox()
+        self.area_spin = NoWheelSpinBox()
         self.area_spin.setMaximum(999)
         self.area_spin.setSuffix(" ㎡")
         
         # 賃料関連
-        self.rent_spin = QSpinBox()
+        self.rent_spin = NoWheelSpinBox()
         self.rent_spin.setMaximum(9999999)
         self.rent_spin.setSuffix(" 円")
         
-        self.maintenance_fee_spin = QSpinBox()
+        self.maintenance_fee_spin = NoWheelSpinBox()
         self.maintenance_fee_spin.setMaximum(999999)
         self.maintenance_fee_spin.setSuffix(" 円")
         
-        self.deposit_spin = QSpinBox()
+        self.deposit_spin = NoWheelSpinBox()
         self.deposit_spin.setMaximum(9999999)
         self.deposit_spin.setSuffix(" 円")
         
-        self.key_money_spin = QSpinBox()
+        self.key_money_spin = NoWheelSpinBox()
         self.key_money_spin.setMaximum(9999999)
         self.key_money_spin.setSuffix(" 円")
         
@@ -732,21 +744,21 @@ class PropertyEditDialog(QDialog):
         ])
         
         # 建築年
-        self.built_year_spin = QSpinBox()
+        self.built_year_spin = NoWheelSpinBox()
         self.built_year_spin.setRange(1900, 2030)
         self.built_year_spin.setValue(2000)
         
         # 階数
-        self.floors_spin = QSpinBox()
+        self.floors_spin = NoWheelSpinBox()
         self.floors_spin.setRange(1, 50)
         
         # 総戸数
-        self.total_units_spin = QSpinBox()
+        self.total_units_spin = NoWheelSpinBox()
         self.total_units_spin.setRange(1, 999)
         
         # 駐車場
         self.parking_check = QCheckBox("駐車場あり")
-        self.parking_spaces_spin = QSpinBox()
+        self.parking_spaces_spin = NoWheelSpinBox()
         self.parking_spaces_spin.setRange(0, 999)
         self.parking_spaces_spin.setSuffix(" 台")
         self.parking_spaces_spin.setEnabled(False)
@@ -926,7 +938,7 @@ class PropertyManagementComplete(QWidget):
         self.building_type_combo.addItems([
             "マンション", "アパート", "一戸建て", "テラスハウス", "その他"
         ])
-        self.built_year_spin = QSpinBox()
+        self.built_year_spin = NoWheelSpinBox()
         self.built_year_spin.setRange(1900, 2030)
         self.notes_edit = QTextEdit()
         self.notes_edit.setMaximumHeight(100)

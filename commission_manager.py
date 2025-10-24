@@ -3,11 +3,22 @@
 """
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                              QGroupBox, QLabel, QLineEdit, QSpinBox, QDoubleSpinBox,
-                             QCheckBox, QTextEdit, QPushButton, QComboBox, 
+                             QCheckBox, QTextEdit, QPushButton, QComboBox,
                              QTableWidget, QTableWidgetItem, QHeaderView)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from utils import MessageHelper, FormatHelper
+
+# マウスホイール無効化SpinBox
+class NoWheelSpinBox(QSpinBox):
+    """マウスホイールによる値変更を無効化したSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
+class NoWheelDoubleSpinBox(QDoubleSpinBox):
+    """マウスホイールによる値変更を無効化したDoubleSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
 
 class CommissionCalculator(QWidget):
     """仲介手数料計算ウィジェット"""
@@ -42,16 +53,16 @@ class CommissionCalculator(QWidget):
         tenant_group = QGroupBox("借主仲介手数料")
         tenant_layout = QFormLayout()
         
-        # 月数指定
-        self.tenant_months_spin = QDoubleSpinBox()
+        # 月数指定（マウスホイール無効化版）
+        self.tenant_months_spin = NoWheelDoubleSpinBox()
         self.tenant_months_spin.setRange(0, 10)
         self.tenant_months_spin.setSingleStep(0.1)
         self.tenant_months_spin.setDecimals(1)
         self.tenant_months_spin.setSuffix(" ヶ月")
         self.tenant_months_spin.valueChanged.connect(self.calculate_tenant_commission)
-        
-        # 金額指定
-        self.tenant_amount_spin = QSpinBox()
+
+        # 金額指定（マウスホイール無効化版）
+        self.tenant_amount_spin = NoWheelSpinBox()
         self.tenant_amount_spin.setRange(0, 9999999)
         self.tenant_amount_spin.setSuffix(" 円")
         self.tenant_amount_spin.valueChanged.connect(self.update_tenant_months_from_amount)
@@ -72,16 +83,16 @@ class CommissionCalculator(QWidget):
         landlord_group = QGroupBox("貸主仲介手数料")
         landlord_layout = QFormLayout()
         
-        # 月数指定
-        self.landlord_months_spin = QDoubleSpinBox()
+        # 月数指定（マウスホイール無効化版）
+        self.landlord_months_spin = NoWheelDoubleSpinBox()
         self.landlord_months_spin.setRange(0, 10)
         self.landlord_months_spin.setSingleStep(0.1)
         self.landlord_months_spin.setDecimals(1)
         self.landlord_months_spin.setSuffix(" ヶ月")
         self.landlord_months_spin.valueChanged.connect(self.calculate_landlord_commission)
-        
-        # 金額指定
-        self.landlord_amount_spin = QSpinBox()
+
+        # 金額指定（マウスホイール無効化版）
+        self.landlord_amount_spin = NoWheelSpinBox()
         self.landlord_amount_spin.setRange(0, 9999999)
         self.landlord_amount_spin.setSuffix(" 円")
         self.landlord_amount_spin.valueChanged.connect(self.update_landlord_months_from_amount)
@@ -102,7 +113,7 @@ class CommissionCalculator(QWidget):
         ad_group = QGroupBox("広告宣伝費")
         ad_layout = QFormLayout()
         
-        self.advertising_fee_spin = QSpinBox()
+        self.advertising_fee_spin = NoWheelSpinBox()
         self.advertising_fee_spin.setRange(0, 9999999)
         self.advertising_fee_spin.setSuffix(" 円")
         

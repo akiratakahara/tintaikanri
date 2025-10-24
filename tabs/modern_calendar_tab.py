@@ -1,19 +1,19 @@
+
 """
 モダンカレンダータブ - 完全刷新版
-直感的で視覚的に美しいカレンダーインターフェース
 """
 
-from PyQt6.QtWidgets import *
-from PyQt6.QtCore import *
-from PyQt6.QtGui import *
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
+                             QLabel, QGridLayout, QScrollArea, QFrame, QComboBox)
+from PyQt6.QtCore import Qt, QDate, pyqtSignal
+from PyQt6.QtGui import QFont
 from datetime import datetime, timedelta
 import calendar
 
-from modern_ui_system import ModernUITheme, ModernButton, ModernCard, ModernInput
-from utils import DateHelper, MessageHelper
+from modern_ui_system import ModernUITheme, ModernCard, ModernButton
 
 class ModernCalendarWidget(QWidget):
-    """カスタムモダンカレンダーウィジェット"""
+    """モダンなカレンダーウィジェット"""
     
     date_clicked = pyqtSignal(QDate)
     
@@ -21,63 +21,743 @@ class ModernCalendarWidget(QWidget):
         super().__init__(parent)
         self.current_date = QDate.currentDate()
         self.selected_date = QDate.currentDate()
-        self.events = {}  # 日付別イベント保存
+        self.events = {}
         self.setup_ui()
-        
+    
     def setup_ui(self):
-        """カレンダーUIを構築"""
+        """UIを構築"""
         layout = QVBoxLayout()
         layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(16)
+        layout.setSpacing(12)
         
-        # ヘッダー（年月移動）
+        # ヘッダー（月移動ボタン）
         header_layout = QHBoxLayout()
         
-        self.prev_btn = ModernButton("‹", "outline", "sm")
-        self.prev_btn.setFixedSize(40, 40)
+        self.prev_btn = QPushButton("◀")
         self.prev_btn.clicked.connect(self.prev_month)
-        
-        self.next_btn = ModernButton("›", "outline", "sm")
-        self.next_btn.setFixedSize(40, 40)
-        self.next_btn.clicked.connect(self.next_month)
+        self.prev_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ModernUITheme.COLORS['bg_primary']};
+                border: 1px solid {ModernUITheme.COLORS['border']};
+                border-radius: {ModernUITheme.RADIUS['base']};
+                padding: 8px 12px;
+                font-size: {ModernUITheme.TYPOGRAPHY['font_size_lg']};
+            }}
+            QPushButton:hover {{
+                background-color: {ModernUITheme.COLORS['primary_lighter']};
+            }}
+        """)
         
         self.month_label = QLabel()
-        self.month_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.month_label.setStyleSheet(f"""
             QLabel {{
                 color: {ModernUITheme.COLORS['text_primary']};
                 font-size: {ModernUITheme.TYPOGRAPHY['font_size_xl']};
-                font-weight: {ModernUITheme.TYPOGRAPHY['font_weight_semibold']};
-                padding: 8px 16px;
+                font-weight: {ModernUITheme.TYPOGRAPHY['font_weight_bold']};
             }}
         """)
         
-        self.today_btn = ModernButton("今日", "outline", "sm")
+        self.next_btn = QPushButton("▶")
+        self.next_btn.clicked.connect(self.next_month)
+        self.next_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ModernUITheme.COLORS['bg_primary']};
+                border: 1px solid {ModernUITheme.COLORS['border']};
+                border-radius: {ModernUITheme.RADIUS['base']};
+                padding: 8px 12px;
+                font-size: {ModernUITheme.TYPOGRAPHY['font_size_lg']};
+            }}
+            QPushButton:hover {{
+                background-color: {ModernUITheme.COLORS['primary_lighter']};
+            }}
+        """)
+        
+        self.today_btn = QPushButton("今日")
         self.today_btn.clicked.connect(self.go_to_today)
+        self.today_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ModernUITheme.COLORS['primary']};
+                color: {ModernUITheme.COLORS['text_light']};
+                border: none;
+                border-radius: {ModernUITheme.RADIUS['base']};
+                padding: 8px 16px;
+                font-weight: {ModernUITheme.TYPOGRAPHY['font_weight_semibold']};
+            }}
+            QPushButton:hover {{
+                background-color: {ModernUITheme.COLORS['primary_darker']};
+            }}
+        """)
         
         header_layout.addWidget(self.prev_btn)
-        header_layout.addStretch()
         header_layout.addWidget(self.month_label)
+        header_layout.addWidget(self.next_btn)
         header_layout.addStretch()
         header_layout.addWidget(self.today_btn)
-        header_layout.addWidget(self.next_btn)
         
         # 曜日ヘッダー
         weekday_layout = QHBoxLayout()
-        weekday_layout.setSpacing(0)
-        
         weekdays = ['月', '火', '水', '木', '金', '土', '日']
         for day in weekdays:
             label = QLabel(day)
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            label.setFixedHeight(40)
             label.setStyleSheet(f"""
                 QLabel {{
                     color: {ModernUITheme.COLORS['text_secondary']};
-                    font-size: {ModernUITheme.TYPOGRAPHY['font_size_sm']};
                     font-weight: {ModernUITheme.TYPOGRAPHY['font_weight_semibold']};
-                    background-color: {ModernUITheme.COLORS['bg_tertiary']};
+                    padding: 8px;
                     border-right: 1px solid {ModernUITheme.COLORS['border']};
                 }}
             """)
-            weekday_layout.addWidget(label)\n        \n        # カレンダーグリッド\n        self.calendar_grid = QGridLayout()\n        self.calendar_grid.setSpacing(1)\n        self.day_buttons = {}\n        \n        # 6週間分のボタンを作成\n        for week in range(6):\n            for day in range(7):\n                btn = self.create_day_button()\n                self.calendar_grid.addWidget(btn, week, day)\n                self.day_buttons[(week, day)] = btn\n        \n        calendar_widget = QWidget()\n        calendar_widget.setLayout(self.calendar_grid)\n        calendar_widget.setStyleSheet(f\"\"\"\n            QWidget {{\n                background-color: {ModernUITheme.COLORS['bg_primary']};\n                border: 1px solid {ModernUITheme.COLORS['border']};\n                border-radius: {ModernUITheme.RADIUS['base']};\n            }}\n        \"\"\")\n        \n        layout.addLayout(header_layout)\n        layout.addLayout(weekday_layout)\n        layout.addWidget(calendar_widget)\n        \n        self.setLayout(layout)\n        self.update_calendar()\n    \n    def create_day_button(self):\n        \"\"\"日付ボタンを作成\"\"\"\n        btn = QPushButton()\n        btn.setFixedSize(60, 50)\n        btn.clicked.connect(lambda: self.day_clicked(btn))\n        \n        btn.setStyleSheet(f\"\"\"\n            QPushButton {{\n                background-color: {ModernUITheme.COLORS['bg_primary']};\n                color: {ModernUITheme.COLORS['text_primary']};\n                border: 1px solid {ModernUITheme.COLORS['border']};\n                font-size: {ModernUITheme.TYPOGRAPHY['font_size_base']};\n                font-weight: {ModernUITheme.TYPOGRAPHY['font_weight_medium']};\n            }}\n            \n            QPushButton:hover {{\n                background-color: {ModernUITheme.COLORS['primary_lighter']};\n                border-color: {ModernUITheme.COLORS['primary']};\n            }}\n            \n            QPushButton[isToday=\"true\"] {{\n                background-color: {ModernUITheme.COLORS['primary']};\n                color: {ModernUITheme.COLORS['text_light']};\n                font-weight: {ModernUITheme.TYPOGRAPHY['font_weight_bold']};\n            }}\n            \n            QPushButton[isSelected=\"true\"] {{\n                background-color: {ModernUITheme.COLORS['accent']};\n                color: {ModernUITheme.COLORS['text_light']};\n                border-color: {ModernUITheme.COLORS['accent']};\n            }}\n            \n            QPushButton[hasEvents=\"true\"] {{\n                border-left: 4px solid {ModernUITheme.COLORS['warning']};\n            }}\n            \n            QPushButton[otherMonth=\"true\"] {{\n                color: {ModernUITheme.COLORS['text_muted']};\n                background-color: {ModernUITheme.COLORS['bg_tertiary']};\n            }}\n        \"\"\")\n        \n        return btn\n    \n    def update_calendar(self):\n        \"\"\"カレンダー表示を更新\"\"\"\n        # 月ラベル更新\n        self.month_label.setText(f\"{self.current_date.year()}年 {self.current_date.month():02d}月\")\n        \n        # 月の最初の日と最後の日を取得\n        first_day = QDate(self.current_date.year(), self.current_date.month(), 1)\n        last_day = QDate(self.current_date.year(), self.current_date.month(), \n                        calendar.monthrange(self.current_date.year(), self.current_date.month())[1])\n        \n        # 月曜日から始まる週の最初の日を計算\n        start_date = first_day.addDays(-(first_day.dayOfWeek() - 1))\n        \n        # カレンダーグリッドを更新\n        current_date = start_date\n        today = QDate.currentDate()\n        \n        for week in range(6):\n            for day in range(7):\n                btn = self.day_buttons[(week, day)]\n                btn.setText(str(current_date.day()))\n                \n                # 日付をボタンに保存\n                btn.date = current_date\n                \n                # 属性をリセット\n                btn.setProperty(\"isToday\", \"false\")\n                btn.setProperty(\"isSelected\", \"false\")\n                btn.setProperty(\"hasEvents\", \"false\")\n                btn.setProperty(\"otherMonth\", \"false\")\n                \n                # 今日の日付かチェック\n                if current_date == today:\n                    btn.setProperty(\"isToday\", \"true\")\n                \n                # 選択日かチェック\n                if current_date == self.selected_date:\n                    btn.setProperty(\"isSelected\", \"true\")\n                \n                # 当月以外かチェック\n                if current_date.month() != self.current_date.month():\n                    btn.setProperty(\"otherMonth\", \"true\")\n                \n                # イベントがあるかチェック\n                if current_date.toString(\"yyyy-MM-dd\") in self.events:\n                    btn.setProperty(\"hasEvents\", \"true\")\n                \n                # スタイルを再適用\n                btn.style().unpolish(btn)\n                btn.style().polish(btn)\n                \n                current_date = current_date.addDays(1)\n    \n    def day_clicked(self, btn):\n        \"\"\"日付クリック処理\"\"\"\n        self.selected_date = btn.date\n        self.date_clicked.emit(self.selected_date)\n        self.update_calendar()\n    \n    def prev_month(self):\n        \"\"\"前月に移動\"\"\"\n        self.current_date = self.current_date.addMonths(-1)\n        self.update_calendar()\n    \n    def next_month(self):\n        \"\"\"次月に移動\"\"\"\n        self.current_date = self.current_date.addMonths(1)\n        self.update_calendar()\n    \n    def go_to_today(self):\n        \"\"\"今日に移動\"\"\"\n        today = QDate.currentDate()\n        self.current_date = today\n        self.selected_date = today\n        self.update_calendar()\n        self.date_clicked.emit(self.selected_date)\n    \n    def set_events(self, events_dict):\n        \"\"\"イベント辞書を設定\"\"\"\n        self.events = events_dict\n        self.update_calendar()\n\nclass ModernEventList(QWidget):\n    \"\"\"モダンなイベントリスト\"\"\"\n    \n    def __init__(self, parent=None):\n        super().__init__(parent)\n        self.setup_ui()\n    \n    def setup_ui(self):\n        \"\"\"イベントリストUIを構築\"\"\"\n        layout = QVBoxLayout()\n        layout.setContentsMargins(16, 16, 16, 16)\n        layout.setSpacing(12)\n        \n        # ヘッダー\n        header_layout = QHBoxLayout()\n        \n        self.date_label = QLabel(\"選択日のスケジュール\")\n        self.date_label.setStyleSheet(f\"\"\"\n            QLabel {{\n                color: {ModernUITheme.COLORS['text_primary']};\n                font-size: {ModernUITheme.TYPOGRAPHY['font_size_lg']};\n                font-weight: {ModernUITheme.TYPOGRAPHY['font_weight_semibold']};\n            }}\n        \"\"\")\n        \n        self.add_event_btn = ModernButton(\"+ 追加\", \"primary\", \"sm\")\n        \n        header_layout.addWidget(self.date_label)\n        header_layout.addStretch()\n        header_layout.addWidget(self.add_event_btn)\n        \n        # フィルター\n        filter_layout = QHBoxLayout()\n        \n        filter_label = QLabel(\"表示:\")\n        self.filter_combo = QComboBox()\n        self.filter_combo.addItems([\"全て\", \"タスク\", \"契約更新\", \"その他\"])\n        self.filter_combo.setStyleSheet(f\"\"\"\n            QComboBox {{\n                background-color: {ModernUITheme.COLORS['bg_primary']};\n                border: 1px solid {ModernUITheme.COLORS['border']};\n                border-radius: {ModernUITheme.RADIUS['base']};\n                padding: 6px 12px;\n                min-width: 100px;\n            }}\n        \"\"\")\n        \n        filter_layout.addWidget(filter_label)\n        filter_layout.addWidget(self.filter_combo)\n        filter_layout.addStretch()\n        \n        # イベントリスト\n        self.scroll_area = QScrollArea()\n        self.scroll_area.setWidgetResizable(True)\n        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)\n        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarNever)\n        \n        self.event_list_widget = QWidget()\n        self.event_list_layout = QVBoxLayout(self.event_list_widget)\n        self.event_list_layout.setSpacing(8)\n        \n        self.scroll_area.setWidget(self.event_list_widget)\n        \n        layout.addLayout(header_layout)\n        layout.addLayout(filter_layout)\n        layout.addWidget(self.scroll_area)\n        \n        self.setLayout(layout)\n    \n    def update_events(self, date, events):\n        \"\"\"指定日のイベントを更新表示\"\"\"\n        # 既存のイベントをクリア\n        for i in reversed(range(self.event_list_layout.count())):\n            child = self.event_list_layout.takeAt(i)\n            if child.widget():\n                child.widget().deleteLater()\n        \n        # 日付ラベル更新\n        try:\n            py_date = date.toPyDate()\n            weekdays = ['月', '火', '水', '木', '金', '土', '日']\n            weekday = weekdays[py_date.weekday()]\n            date_str = f\"{py_date.year}年{py_date.month:02d}月{py_date.day:02d}日 ({weekday})\"\n        except:\n            date_str = date.toString(\"yyyy年MM月dd日\")\n        \n        self.date_label.setText(f\"📅 {date_str}\")\n        \n        # イベントが存在する場合\n        if events:\n            for event in events:\n                event_card = self.create_event_card(event)\n                self.event_list_layout.addWidget(event_card)\n        else:\n            # イベントがない場合\n            empty_label = QLabel(\"📝 この日にはスケジュールがありません\")\n            empty_label.setStyleSheet(f\"\"\"\n                QLabel {{\n                    color: {ModernUITheme.COLORS['text_muted']};\n                    font-size: {ModernUITheme.TYPOGRAPHY['font_size_base']};\n                    padding: 40px;\n                    text-align: center;\n                }}\n            \"\"\")\n            empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)\n            self.event_list_layout.addWidget(empty_label)\n        \n        self.event_list_layout.addStretch()\n    \n    def create_event_card(self, event):\n        \"\"\"イベントカードを作成\"\"\"\n        card = QFrame()\n        card.setStyleSheet(f\"\"\"\n            QFrame {{\n                background-color: {ModernUITheme.COLORS['bg_primary']};\n                border: 1px solid {ModernUITheme.COLORS['border']};\n                border-radius: {ModernUITheme.RADIUS['base']};\n                border-left: 4px solid {self.get_event_color(event)};\n                padding: 12px;\n                margin: 4px 0;\n            }}\n            QFrame:hover {{\n                border-color: {ModernUITheme.COLORS['border_hover']};\n                background-color: {ModernUITheme.COLORS['bg_secondary']};\n            }}\n        \"\"\")\n        \n        layout = QVBoxLayout(card)\n        layout.setContentsMargins(12, 8, 12, 8)\n        layout.setSpacing(4)\n        \n        # タイトル行\n        title_layout = QHBoxLayout()\n        \n        icon_label = QLabel(self.get_event_icon(event))\n        title_label = QLabel(event.get('title', '無題'))\n        title_label.setStyleSheet(f\"\"\"\n            QLabel {{\n                color: {ModernUITheme.COLORS['text_primary']};\n                font-weight: {ModernUITheme.TYPOGRAPHY['font_weight_semibold']};\n                font-size: {ModernUITheme.TYPOGRAPHY['font_size_base']};\n            }}\n        \"\"\")\n        \n        priority_label = QLabel(event.get('priority', ''))\n        priority_label.setStyleSheet(f\"\"\"\n            QLabel {{\n                color: {ModernUITheme.COLORS['text_muted']};\n                font-size: {ModernUITheme.TYPOGRAPHY['font_size_sm']};\n            }}\n        \"\"\")\n        \n        title_layout.addWidget(icon_label)\n        title_layout.addWidget(title_label)\n        title_layout.addStretch()\n        title_layout.addWidget(priority_label)\n        \n        # 詳細情報\n        if event.get('description'):\n            desc_label = QLabel(event['description'][:100] + \"...\" if len(event['description']) > 100 else event['description'])\n            desc_label.setStyleSheet(f\"\"\"\n                QLabel {{\n                    color: {ModernUITheme.COLORS['text_secondary']};\n                    font-size: {ModernUITheme.TYPOGRAPHY['font_size_sm']};\n                }}\n            \"\"\")\n            desc_label.setWordWrap(True)\n            layout.addWidget(desc_label)\n        \n        layout.addLayout(title_layout)\n        \n        return card\n    \n    def get_event_color(self, event):\n        \"\"\"イベントタイプに応じた色を取得\"\"\"\n        event_type = event.get('type', '')\n        if event_type == 'task':\n            return ModernUITheme.COLORS['danger']\n        elif event_type in ['renewal', 'renewal_notification']:\n            return ModernUITheme.COLORS['info']\n        else:\n            return ModernUITheme.COLORS['accent']\n    \n    def get_event_icon(self, event):\n        \"\"\"イベントタイプに応じたアイコンを取得\"\"\"\n        event_type = event.get('type', '')\n        if event_type == 'task':\n            return '📋'\n        elif event_type in ['renewal', 'renewal_notification']:\n            return '🔄'\n        else:\n            return '📌'\n\nclass ModernCalendarTab(QWidget):\n    \"\"\"完全刷新されたカレンダータブ\"\"\"\n    \n    def __init__(self):\n        super().__init__()\n        self.tasks = []\n        self.renewals = []\n        self.setup_ui()\n        self.load_schedule_data()\n        self.update_events()\n        \n    def setup_ui(self):\n        \"\"\"UIを構築\"\"\"\n        layout = QVBoxLayout()\n        layout.setContentsMargins(24, 24, 24, 24)\n        layout.setSpacing(20)\n        \n        # ページタイトル\n        title_label = QLabel(\"📅 カレンダー\")\n        title_label.setStyleSheet(f\"\"\"\n            QLabel {{\n                color: {ModernUITheme.COLORS['text_primary']};\n                font-size: {ModernUITheme.TYPOGRAPHY['font_size_3xl']};\n                font-weight: {ModernUITheme.TYPOGRAPHY['font_weight_bold']};\n                margin-bottom: {ModernUITheme.SPACING['lg']};\n            }}\n        \"\"\")\n        \n        # メインコンテンツ\n        content_layout = QHBoxLayout()\n        content_layout.setSpacing(24)\n        \n        # 左側：カレンダー\n        calendar_card = ModernCard()\n        calendar_layout = calendar_card.layout()\n        \n        self.calendar_widget = ModernCalendarWidget()\n        self.calendar_widget.date_clicked.connect(self.on_date_selected)\n        calendar_layout.addWidget(self.calendar_widget)\n        \n        # 右側：イベントリスト\n        self.event_list = ModernEventList()\n        \n        # 比率設定\n        content_layout.addWidget(calendar_card, 2)  # カレンダー側を大きく\n        content_layout.addWidget(self.event_list, 1)  # イベントリスト側\n        \n        layout.addWidget(title_label)\n        layout.addLayout(content_layout)\n        \n        self.setLayout(layout)\n        \n        # 初期選択日を設定\n        self.on_date_selected(QDate.currentDate())\n    \n    def load_schedule_data(self):\n        \"\"\"スケジュールデータを読み込み\"\"\"\n        self.load_tasks()\n        self.load_renewals()\n    \n    def load_tasks(self):\n        \"\"\"タスクを読み込み\"\"\"\n        try:\n            from models import Task\n            db_tasks = Task.get_pending_tasks() or []\n            \n            self.tasks = []\n            for task in db_tasks:\n                if task.get('due_date'):\n                    self.tasks.append({\n                        'id': task.get('id'),\n                        'type': 'task',\n                        'title': task.get('title', ''),\n                        'description': task.get('description', ''),\n                        'due_date': task.get('due_date'),\n                        'priority': task.get('priority', '中'),\n                        'task_type': task.get('task_type', ''),\n                        'assigned_to': task.get('assigned_to', ''),\n                        'status': task.get('status', '未完了')\n                    })\n        except Exception as e:\n            print(f\"タスク読み込みエラー: {e}\")\n            self.tasks = []\n    \n    def load_renewals(self):\n        \"\"\"契約更新を読み込み\"\"\"\n        try:\n            from models import TenantContract\n            contracts = TenantContract.get_all() or []\n            \n            self.renewals = []\n            for contract in contracts:\n                if contract.get('end_date'):\n                    end_date = contract.get('end_date')\n                    if isinstance(end_date, str):\n                        end_date_obj = datetime.strptime(end_date, \"%Y-%m-%d\").date()\n                    else:\n                        end_date_obj = end_date\n                    \n                    # 通知日を計算\n                    notification_date = end_date_obj - timedelta(days=60)\n                    \n                    self.renewals.append({\n                        'id': contract.get('id'),\n                        'type': 'renewal',\n                        'title': f\"契約更新: {contract.get('property_name', '')} {contract.get('room_number', '')}\",\n                        'tenant_name': contract.get('tenant_name', ''),\n                        'property_name': contract.get('property_name', ''),\n                        'room_number': contract.get('room_number', ''),\n                        'end_date': end_date_obj.strftime(\"%Y-%m-%d\"),\n                        'notification_date': notification_date.strftime(\"%Y-%m-%d\"),\n                        'rent': contract.get('rent', 0),\n                        'status': contract.get('status', '')\n                    })\n        except Exception as e:\n            print(f\"契約更新読み込みエラー: {e}\")\n            self.renewals = []\n    \n    def update_events(self):\n        \"\"\"イベント情報をカレンダーに反映\"\"\"\n        events_dict = {}\n        \n        # タスクを追加\n        for task in self.tasks:\n            date_key = task['due_date']\n            if date_key not in events_dict:\n                events_dict[date_key] = []\n            events_dict[date_key].append(task)\n        \n        # 契約更新を追加\n        for renewal in self.renewals:\n            # 通知日\n            notif_date = renewal['notification_date']\n            if notif_date not in events_dict:\n                events_dict[notif_date] = []\n            events_dict[notif_date].append({\n                **renewal,\n                'type': 'renewal_notification',\n                'title': f\"更新通知: {renewal['property_name']} {renewal['room_number']}\"\n            })\n            \n            # 契約終了日\n            end_date = renewal['end_date']\n            if end_date not in events_dict:\n                events_dict[end_date] = []\n            events_dict[end_date].append(renewal)\n        \n        # カレンダーに反映\n        self.calendar_widget.set_events(events_dict)\n        self.events_dict = events_dict\n    \n    def on_date_selected(self, date):\n        \"\"\"日付選択時の処理\"\"\"\n        date_key = date.toString(\"yyyy-MM-dd\")\n        events = self.events_dict.get(date_key, [])\n        self.event_list.update_events(date, events)\n    \n    def resizeEvent(self, event):\n        \"\"\"リサイズイベント処理\"\"\"\n        super().resizeEvent(event)\n        # 必要に応じてレイアウト調整"
+            weekday_layout.addWidget(label)
+        
+        # カレンダーグリッド
+        self.calendar_grid = QGridLayout()
+        self.calendar_grid.setSpacing(1)
+        self.day_buttons = {}
+        
+        # 6週間分のボタンを作成
+        for week in range(6):
+            for day in range(7):
+                btn = self.create_day_button()
+                self.calendar_grid.addWidget(btn, week, day)
+                self.day_buttons[(week, day)] = btn
+        
+        calendar_widget = QWidget()
+        calendar_widget.setLayout(self.calendar_grid)
+        calendar_widget.setStyleSheet(f"""
+            QWidget {{
+                background-color: {ModernUITheme.COLORS['bg_primary']};
+                border: 1px solid {ModernUITheme.COLORS['border']};
+                border-radius: {ModernUITheme.RADIUS['base']};
+            }}
+        """)
+        
+        layout.addLayout(header_layout)
+        layout.addLayout(weekday_layout)
+        layout.addWidget(calendar_widget)
+        
+        self.setLayout(layout)
+        self.update_calendar()
+    
+    def create_day_button(self):
+        """日付ボタンを作成"""
+        btn = QPushButton()
+        btn.setFixedSize(60, 50)
+        btn.clicked.connect(lambda: self.day_clicked(btn))
+        
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ModernUITheme.COLORS['bg_primary']};
+                color: {ModernUITheme.COLORS['text_primary']};
+                border: 1px solid {ModernUITheme.COLORS['border']};
+                font-size: {ModernUITheme.TYPOGRAPHY['font_size_base']};
+                font-weight: {ModernUITheme.TYPOGRAPHY['font_weight_medium']};
+            }}
+            
+            QPushButton:hover {{
+                background-color: {ModernUITheme.COLORS['primary_lighter']};
+                border-color: {ModernUITheme.COLORS['primary']};
+            }}
+            
+            QPushButton[isToday="true"] {{
+                background-color: {ModernUITheme.COLORS['primary']};
+                color: {ModernUITheme.COLORS['text_light']};
+                font-weight: {ModernUITheme.TYPOGRAPHY['font_weight_bold']};
+            }}
+            
+            QPushButton[isSelected="true"] {{
+                background-color: {ModernUITheme.COLORS['accent']};
+                color: {ModernUITheme.COLORS['text_light']};
+                border-color: {ModernUITheme.COLORS['accent']};
+            }}
+            
+            QPushButton[hasEvents="true"] {{
+                border-left: 4px solid {ModernUITheme.COLORS['warning']};
+            }}
+            
+            QPushButton[otherMonth="true"] {{
+                color: {ModernUITheme.COLORS['text_muted']};
+                background-color: {ModernUITheme.COLORS['bg_tertiary']};
+            }}
+        """)
+        
+        return btn
+    
+    def update_calendar(self):
+        """カレンダー表示を更新"""
+        # 月ラベル更新
+        self.month_label.setText(f"{self.current_date.year()}年 {self.current_date.month():02d}月")
+        
+        # 月の最初の日と最後の日を取得
+        first_day = QDate(self.current_date.year(), self.current_date.month(), 1)
+        last_day = QDate(self.current_date.year(), self.current_date.month(), 
+                        calendar.monthrange(self.current_date.year(), self.current_date.month())[1])
+        
+        # 月曜日から始まる週の最初の日を計算
+        start_date = first_day.addDays(-(first_day.dayOfWeek() - 1))
+        
+        # カレンダーグリッドを更新
+        current_date = start_date
+        today = QDate.currentDate()
+        
+        for week in range(6):
+            for day in range(7):
+                btn = self.day_buttons[(week, day)]
+                btn.setText(str(current_date.day()))
+                
+                # 日付をボタンに保存
+                btn.date = current_date
+                
+                # 属性をリセット
+                btn.setProperty("isToday", "false")
+                btn.setProperty("isSelected", "false")
+                btn.setProperty("hasEvents", "false")
+                btn.setProperty("otherMonth", "false")
+                
+                # 今日の日付かチェック
+                if current_date == today:
+                    btn.setProperty("isToday", "true")
+                
+                # 選択日かチェック
+                if current_date == self.selected_date:
+                    btn.setProperty("isSelected", "true")
+                
+                # 当月以外かチェック
+                if current_date.month() != self.current_date.month():
+                    btn.setProperty("otherMonth", "true")
+                
+                # イベントがあるかチェック
+                if current_date.toString("yyyy-MM-dd") in self.events:
+                    btn.setProperty("hasEvents", "true")
+                
+                # スタイルを再適用
+                btn.style().unpolish(btn)
+                btn.style().polish(btn)
+                
+                current_date = current_date.addDays(1)
+    
+    def day_clicked(self, btn):
+        """日付クリック処理"""
+        self.selected_date = btn.date
+        self.date_clicked.emit(self.selected_date)
+        self.update_calendar()
+    
+    def prev_month(self):
+        """前月に移動"""
+        self.current_date = self.current_date.addMonths(-1)
+        self.update_calendar()
+    
+    def next_month(self):
+        """次月に移動"""
+        self.current_date = self.current_date.addMonths(1)
+        self.update_calendar()
+    
+    def go_to_today(self):
+        """今日に移動"""
+        today = QDate.currentDate()
+        self.current_date = today
+        self.selected_date = today
+        self.update_calendar()
+        self.date_clicked.emit(self.selected_date)
+    
+    def set_events(self, events_dict):
+        """イベント辞書を設定"""
+        self.events = events_dict
+        self.update_calendar()
+
+class ModernEventList(QWidget):
+    """モダンなイベントリスト"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """イベントリストUIを構築"""
+        layout = QVBoxLayout()
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+        
+        # ヘッダー
+        header_layout = QHBoxLayout()
+        
+        self.date_label = QLabel("選択日のスケジュール")
+        self.date_label.setStyleSheet(f"""
+            QLabel {{
+                color: {ModernUITheme.COLORS['text_primary']};
+                font-size: {ModernUITheme.TYPOGRAPHY['font_size_lg']};
+                font-weight: {ModernUITheme.TYPOGRAPHY['font_weight_semibold']};
+            }}
+        """)
+        
+        self.add_event_btn = ModernButton("+ 追加", "primary", "sm")
+        
+        header_layout.addWidget(self.date_label)
+        header_layout.addStretch()
+        header_layout.addWidget(self.add_event_btn)
+        
+        # フィルター
+        filter_layout = QHBoxLayout()
+        
+        filter_label = QLabel("表示:")
+        self.filter_combo = QComboBox()
+        self.filter_combo.addItems(["全て", "タスク", "契約更新", "その他"])
+        self.filter_combo.setStyleSheet(f"""
+            QComboBox {{
+                background-color: {ModernUITheme.COLORS['bg_primary']};
+                border: 1px solid {ModernUITheme.COLORS['border']};
+                border-radius: {ModernUITheme.RADIUS['base']};
+                padding: 6px 12px;
+                min-width: 100px;
+            }}
+        """)
+        
+        filter_layout.addWidget(filter_label)
+        filter_layout.addWidget(self.filter_combo)
+        filter_layout.addStretch()
+        
+        # イベントリスト
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarNever)
+        
+        self.event_list_widget = QWidget()
+        self.event_list_layout = QVBoxLayout(self.event_list_widget)
+        self.event_list_layout.setSpacing(8)
+        
+        self.scroll_area.setWidget(self.event_list_widget)
+        
+        layout.addLayout(header_layout)
+        layout.addLayout(filter_layout)
+        layout.addWidget(self.scroll_area)
+        
+        self.setLayout(layout)
+    
+    def update_events(self, date, events):
+        """指定日のイベントを更新表示"""
+        # 既存のイベントをクリア
+        for i in reversed(range(self.event_list_layout.count())):
+            child = self.event_list_layout.takeAt(i)
+            if child.widget():
+                child.widget().deleteLater()
+        
+        # 日付ラベル更新
+        try:
+            py_date = date.toPyDate()
+            weekdays = ['月', '火', '水', '木', '金', '土', '日']
+            weekday = weekdays[py_date.weekday()]
+            date_str = f"{py_date.year}年{py_date.month:02d}月{py_date.day:02d}日 ({weekday})"
+        except:
+            date_str = date.toString("yyyy年MM月dd日")
+        
+        self.date_label.setText(f"📅 {date_str}")
+        
+        # イベントが存在する場合
+        if events:
+            for event in events:
+                event_card = self.create_event_card(event)
+                self.event_list_layout.addWidget(event_card)
+        else:
+            # イベントがない場合
+            empty_label = QLabel("📝 この日にはスケジュールがありません")
+            empty_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {ModernUITheme.COLORS['text_muted']};
+                    font-size: {ModernUITheme.TYPOGRAPHY['font_size_base']};
+                    padding: 40px;
+                    text-align: center;
+                }}
+            """)
+            empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.event_list_layout.addWidget(empty_label)
+        
+        self.event_list_layout.addStretch()
+    
+    def create_event_card(self, event):
+        """イベントカードを作成"""
+        card = QFrame()
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {ModernUITheme.COLORS['bg_primary']};
+                border: 1px solid {ModernUITheme.COLORS['border']};
+                border-radius: {ModernUITheme.RADIUS['base']};
+                border-left: 4px solid {self.get_event_color(event)};
+                padding: 12px;
+                margin: 4px 0;
+            }}
+            QFrame:hover {{
+                border-color: {ModernUITheme.COLORS['border_hover']};
+                background-color: {ModernUITheme.COLORS['bg_secondary']};
+            }}
+        """)
+        
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(4)
+        
+        # タイトル行
+        title_layout = QHBoxLayout()
+        
+        icon_label = QLabel(self.get_event_icon(event))
+        title_label = QLabel(event.get('title', '無題'))
+        title_label.setStyleSheet(f"""
+            QLabel {{
+                color: {ModernUITheme.COLORS['text_primary']};
+                font-weight: {ModernUITheme.TYPOGRAPHY['font_weight_semibold']};
+                font-size: {ModernUITheme.TYPOGRAPHY['font_size_base']};
+            }}
+        """)
+        
+        priority_label = QLabel(event.get('priority', ''))
+        priority_label.setStyleSheet(f"""
+            QLabel {{
+                color: {ModernUITheme.COLORS['text_muted']};
+                font-size: {ModernUITheme.TYPOGRAPHY['font_size_sm']};
+            }}
+        """)
+        
+        title_layout.addWidget(icon_label)
+        title_layout.addWidget(title_label)
+        title_layout.addStretch()
+        title_layout.addWidget(priority_label)
+        
+        # 詳細情報
+        if event.get('description'):
+            desc_label = QLabel(event['description'][:100] + "..." if len(event['description']) > 100 else event['description'])
+            desc_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {ModernUITheme.COLORS['text_secondary']};
+                    font-size: {ModernUITheme.TYPOGRAPHY['font_size_sm']};
+                }}
+            """)
+            desc_label.setWordWrap(True)
+            layout.addWidget(desc_label)
+        
+        layout.addLayout(title_layout)
+        
+        return card
+    
+    def get_event_color(self, event):
+        """イベントタイプに応じた色を取得"""
+        event_type = event.get('type', '')
+        if event_type == 'task':
+            return ModernUITheme.COLORS['danger']
+        elif event_type in ['renewal', 'renewal_notification']:
+            return ModernUITheme.COLORS['info']
+        elif event_type == 'procedure':
+            return event.get('color', ModernUITheme.COLORS['warning'])
+        else:
+            return ModernUITheme.COLORS['accent']
+    
+    def get_event_icon(self, event):
+        """イベントタイプに応じたアイコンを取得"""
+        event_type = event.get('type', '')
+        if event_type == 'task':
+            return '📋'
+        elif event_type in ['renewal', 'renewal_notification']:
+            return '🔄'
+        elif event_type == 'procedure':
+            return '📝'
+        else:
+            return '📌'
+
+class ModernCalendarTab(QWidget):
+    """完全刷新されたカレンダータブ"""
+    
+    def __init__(self):
+        super().__init__()
+        self.tasks = []
+        self.renewals = []
+        self.procedure_logs = []
+        self.setup_ui()
+        self.load_schedule_data()
+        self.update_events()
+        
+    def setup_ui(self):
+        """UIを構築"""
+        layout = QVBoxLayout()
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(20)
+        
+        # ページタイトル
+        title_label = QLabel("📅 カレンダー")
+        title_label.setStyleSheet(f"""
+            QLabel {{
+                color: {ModernUITheme.COLORS['text_primary']};
+                font-size: {ModernUITheme.TYPOGRAPHY['font_size_3xl']};
+                font-weight: {ModernUITheme.TYPOGRAPHY['font_weight_bold']};
+                margin-bottom: {ModernUITheme.SPACING['lg']};
+            }}
+        """)
+        
+        # メインコンテンツ
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(24)
+        
+        # 左側：カレンダー
+        calendar_card = ModernCard()
+        calendar_layout = calendar_card.layout()
+        
+        self.calendar_widget = ModernCalendarWidget()
+        self.calendar_widget.date_clicked.connect(self.on_date_selected)
+        calendar_layout.addWidget(self.calendar_widget)
+        
+        # 右側：イベントリスト
+        self.event_list = ModernEventList()
+        
+        # 比率設定
+        content_layout.addWidget(calendar_card, 2)  # カレンダー側を大きく
+        content_layout.addWidget(self.event_list, 1)  # イベントリスト側
+        
+        layout.addWidget(title_label)
+        layout.addLayout(content_layout)
+        
+        self.setLayout(layout)
+        
+        # 初期選択日を設定
+        self.on_date_selected(QDate.currentDate())
+    
+    def load_schedule_data(self):
+        """スケジュールデータを読み込み"""
+        self.load_tasks()
+        self.load_renewals()
+        self.load_procedure_logs()
+    
+    def load_tasks(self):
+        """タスクを読み込み"""
+        try:
+            from models import Task
+            db_tasks = Task.get_pending_tasks() or []
+            
+            self.tasks = []
+            for task in db_tasks:
+                if task.get('due_date'):
+                    self.tasks.append({
+                        'id': task.get('id'),
+                        'type': 'task',
+                        'title': task.get('title', ''),
+                        'description': task.get('description', ''),
+                        'due_date': task.get('due_date'),
+                        'priority': task.get('priority', '中'),
+                        'task_type': task.get('task_type', ''),
+                        'assigned_to': task.get('assigned_to', ''),
+                        'status': task.get('status', '未完了')
+                    })
+        except Exception as e:
+            print(f"タスク読み込みエラー: {e}")
+            # ダミーデータを追加（テスト用）
+            from PyQt6.QtCore import QDate
+            current_date = QDate.currentDate()
+            self.tasks = [
+                {
+                    'id': 1,
+                    'type': 'task',
+                    'title': 'サンプル更新案内タスク',
+                    'description': '契約更新の案内を送付',
+                    'due_date': current_date.addDays(3).toString("yyyy-MM-dd"),
+                    'priority': '高',
+                    'task_type': '更新案内',
+                    'assigned_to': '担当者A',
+                    'status': '未完了'
+                },
+                {
+                    'id': 2,
+                    'type': 'task',
+                    'title': '修繕対応',
+                    'description': 'エアコン修理手配',
+                    'due_date': current_date.addDays(7).toString("yyyy-MM-dd"),
+                    'priority': '中',
+                    'task_type': '修繕',
+                    'assigned_to': '担当者B',
+                    'status': '未完了'
+                }
+            ]
+            print("ダミータスクデータを使用")
+    
+    def load_renewals(self):
+        """契約更新を読み込み"""
+        try:
+            from models import TenantContract
+            contracts = TenantContract.get_all() or []
+            
+            self.renewals = []
+            for contract in contracts:
+                if contract.get('end_date'):
+                    end_date = contract.get('end_date')
+                    if isinstance(end_date, str):
+                        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
+                    else:
+                        end_date_obj = end_date
+                    
+                    # 通知日を計算
+                    notification_date = end_date_obj - timedelta(days=60)
+                    
+                    self.renewals.append({
+                        'id': contract.get('id'),
+                        'type': 'renewal',
+                        'title': f"契約更新: {contract.get('property_name', '')} {contract.get('room_number', '')}",
+                        'tenant_name': contract.get('tenant_name', ''),
+                        'property_name': contract.get('property_name', ''),
+                        'room_number': contract.get('room_number', ''),
+                        'end_date': end_date_obj.strftime("%Y-%m-%d"),
+                        'notification_date': notification_date.strftime("%Y-%m-%d"),
+                        'rent': contract.get('rent', 0),
+                        'status': contract.get('status', '')
+                    })
+        except Exception as e:
+            print(f"契約更新読み込みエラー: {e}")
+            # ダミーデータを追加（テスト用）
+            from PyQt6.QtCore import QDate
+            current_date = QDate.currentDate()
+            self.renewals = [
+                {
+                    'id': 1,
+                    'type': 'renewal',
+                    'title': 'サンプル物件 101号室 契約更新',
+                    'tenant_name': 'サンプル契約者',
+                    'property_name': 'サンプル物件',
+                    'room_number': '101',
+                    'end_date': current_date.addDays(45).toString("yyyy-MM-dd"),
+                    'notification_date': current_date.addDays(-15).toString("yyyy-MM-dd"),
+                    'rent': 80000,
+                    'status': 'アクティブ'
+                },
+                {
+                    'id': 2,
+                    'type': 'renewal',
+                    'title': 'サンプル物件 202号室 契約更新',
+                    'tenant_name': 'サンプル契約者B',
+                    'property_name': 'サンプル物件',
+                    'room_number': '202',
+                    'end_date': current_date.addDays(80).toString("yyyy-MM-dd"),
+                    'notification_date': current_date.addDays(20).toString("yyyy-MM-dd"),
+                    'rent': 95000,
+                    'status': 'アクティブ'
+                }
+            ]
+            print("ダミー契約データを使用")
+    
+    def load_procedure_logs(self):
+        """契約手続きログを読み込み"""
+        try:
+            from models import ContractProcedureLog
+            from PyQt6.QtCore import QDate
+            
+            # カレンダー表示用の手続きログイベントを取得
+            current_date = QDate.currentDate()
+            start_date = current_date.addMonths(-2).toString("yyyy-MM-dd")  # 2ヶ月前から
+            end_date = current_date.addMonths(3).toString("yyyy-MM-dd")     # 3ヶ月後まで
+            
+            procedure_events = ContractProcedureLog.get_calendar_events(start_date, end_date)
+            
+            # カレンダー表示用にフォーマット
+            self.procedure_logs = []
+            for event in procedure_events:
+                self.procedure_logs.append({
+                    'id': event.get('id'),
+                    'type': 'procedure',
+                    'title': event.get('title', '手続き'),
+                    'date': event.get('date'),
+                    'status': event.get('status', 'pending'),
+                    'notes': event.get('notes', ''),
+                    'contractor_name': event.get('contractor_name', ''),
+                    'property_name': event.get('property_name', ''),
+                    'room_number': event.get('room_number', ''),
+                    'color': event.get('color', '#f59e0b')
+                })
+        except Exception as e:
+            print(f"手続きログ読み込みエラー: {e}")
+            self.procedure_logs = []
+    
+    def update_events(self):
+        """イベント情報をカレンダーに反映"""
+        events_dict = {}
+        
+        # タスクを追加
+        for task in self.tasks:
+            date_key = task['due_date']
+            if date_key not in events_dict:
+                events_dict[date_key] = []
+            events_dict[date_key].append(task)
+        
+        # 契約更新を追加
+        for renewal in self.renewals:
+            # 通知日
+            notif_date = renewal['notification_date']
+            if notif_date not in events_dict:
+                events_dict[notif_date] = []
+            events_dict[notif_date].append({
+                **renewal,
+                'type': 'renewal_notification',
+                'title': f"更新通知: {renewal['property_name']} {renewal['room_number']}"
+            })
+            
+            # 契約終了日
+            end_date = renewal['end_date']
+            if end_date not in events_dict:
+                events_dict[end_date] = []
+            events_dict[end_date].append(renewal)
+        
+        # 手続きログを追加
+        for procedure in self.procedure_logs:
+            date_key = procedure['date']
+            if date_key not in events_dict:
+                events_dict[date_key] = []
+            events_dict[date_key].append(procedure)
+        
+        # カレンダーに反映
+        self.calendar_widget.set_events(events_dict)
+        self.events_dict = events_dict
+    
+    def on_date_selected(self, date):
+        """日付選択時の処理"""
+        date_key = date.toString("yyyy-MM-dd")
+        events = self.events_dict.get(date_key, [])
+        self.event_list.update_events(date, events)
+    
+    def resizeEvent(self, event):
+        """リサイズイベント処理"""
+        super().resizeEvent(event)
+        # 必要に応じてレイアウト調整
+    
+    def quick_refresh_tasks(self):
+        """タスクのみの高速更新"""
+        try:
+            # タスクデータのみを再読み込み
+            self.load_tasks()
+            # イベント情報を更新
+            self.update_events()
+            print("モダンカレンダーのタスクデータを高速更新しました")
+        except Exception as e:
+            print(f"モダンカレンダータスク高速更新エラー: {e}")
+    
+    def quick_refresh_contracts(self):
+        """契約データのみの高速更新"""
+        try:
+            print("モダンカレンダー契約データ高速更新開始")
+            # 契約・更新データのみを再読み込み
+            self.load_renewals()
+            print(f"契約データ読み込み完了: {len(self.renewals)}件")
+            # イベント情報を更新
+            self.update_events()
+            print("モダンカレンダーの契約データを高速更新しました")
+        except Exception as e:
+            print(f"モダンカレンダー契約高速更新エラー: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def quick_refresh_procedures(self):
+        """手続きログのみの高速更新"""
+        try:
+            print("モダンカレンダー手続きログ高速更新開始")
+            # 手続きログデータのみを再読み込み
+            self.load_procedure_logs()
+            print(f"手続きログデータ読み込み完了: {len(self.procedure_logs)}件")
+            # イベント情報を更新
+            self.update_events()
+            print("モダンカレンダーの手続きログを高速更新しました")
+        except Exception as e:
+            print(f"モダンカレンダー手続きログ高速更新エラー: {e}")
+            import traceback
+            traceback.print_exc()

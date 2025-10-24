@@ -537,6 +537,51 @@ class ModernMainWindow(QMainWindow):
     def setup_connections(self):
         """シグナル・スロット接続"""
         self.sidebar.nav_clicked.connect(self.show_page)
+        
+        # タスク管理とカレンダーの連携
+        if "tasks" in self.pages and "calendar" in self.pages:
+            try:
+                # タスク更新時にカレンダーも更新
+                if hasattr(self.pages["tasks"], 'task_updated'):
+                    self.pages["tasks"].task_updated.connect(self.update_calendar_from_tasks)
+            except Exception as e:
+                print(f"タスク-カレンダー連携設定エラー: {e}")
+        
+        # 契約管理とカレンダーの連携
+        if "contracts" in self.pages and "calendar" in self.pages:
+            try:
+                # 契約更新時にカレンダーも更新
+                if hasattr(self.pages["contracts"], 'contract_updated'):
+                    self.pages["contracts"].contract_updated.connect(self.update_calendar_from_contracts)
+            except Exception as e:
+                print(f"契約-カレンダー連携設定エラー: {e}")
+        
+        # 物件管理とカレンダーの連携
+        if "properties" in self.pages and "calendar" in self.pages:
+            try:
+                # 物件更新時にカレンダーも更新
+                if hasattr(self.pages["properties"], 'property_updated'):
+                    self.pages["properties"].property_updated.connect(self.update_calendar_from_properties)
+            except Exception as e:
+                print(f"物件-カレンダー連携設定エラー: {e}")
+        
+        # 顧客管理とカレンダーの連携
+        if "customers" in self.pages and "calendar" in self.pages:
+            try:
+                # 顧客更新時にカレンダーも更新
+                if hasattr(self.pages["customers"], 'customer_updated'):
+                    self.pages["customers"].customer_updated.connect(self.update_calendar_from_customers)
+            except Exception as e:
+                print(f"顧客-カレンダー連携設定エラー: {e}")
+
+        # 顧客管理と接点履歴の連携
+        if "customers" in self.pages and "communications" in self.pages:
+            try:
+                # 顧客更新・削除時に接点履歴も更新
+                if hasattr(self.pages["customers"], 'customer_updated'):
+                    self.pages["customers"].customer_updated.connect(self.update_communications_from_customers)
+            except Exception as e:
+                print(f"顧客-接点履歴連携設定エラー: {e}")
     
     def show_page(self, page_key):
         """指定されたページを表示"""
@@ -549,6 +594,91 @@ class ModernMainWindow(QMainWindow):
             if page_key == "dashboard" and hasattr(self.pages["dashboard"], 'load_dashboard_data'):
                 self.pages["dashboard"].load_dashboard_data()
     
+    def update_calendar_from_tasks(self):
+        """タスク更新時にカレンダーを更新"""
+        try:
+            if "calendar" in self.pages:
+                calendar_tab = self.pages["calendar"]
+                # カレンダータブの更新メソッドを呼び出し
+                if hasattr(calendar_tab, 'quick_refresh_tasks'):
+                    # タスク専用の高速更新メソッドを使用
+                    calendar_tab.quick_refresh_tasks()
+                elif hasattr(calendar_tab, 'load_schedule_data'):
+                    calendar_tab.load_schedule_data()
+                    if hasattr(calendar_tab, 'update_calendar'):
+                        calendar_tab.update_calendar()
+                print("カレンダーをタスク更新に応じて更新しました")
+        except Exception as e:
+            print(f"カレンダー更新エラー: {e}")
+    
+    def update_calendar_from_contracts(self):
+        """契約更新時にカレンダーを更新"""
+        try:
+            print("契約更新によるカレンダー更新開始")
+            if "calendar" in self.pages:
+                calendar_tab = self.pages["calendar"]
+                # カレンダータブの更新メソッドを呼び出し
+                if hasattr(calendar_tab, 'quick_refresh_contracts'):
+                    # 契約専用の高速更新メソッドを使用
+                    print("quick_refresh_contracts()を呼び出し")
+                    calendar_tab.quick_refresh_contracts()
+                if hasattr(calendar_tab, 'quick_refresh_procedures'):
+                    # 手続きログも更新
+                    print("quick_refresh_procedures()を呼び出し")
+                    calendar_tab.quick_refresh_procedures()
+                elif hasattr(calendar_tab, 'load_schedule_data'):
+                    print("load_schedule_data()を呼び出し")
+                    calendar_tab.load_schedule_data()
+                    if hasattr(calendar_tab, 'update_calendar'):
+                        calendar_tab.update_calendar()
+                print("カレンダーを契約更新に応じて更新しました")
+            else:
+                print("カレンダータブが見つかりません")
+        except Exception as e:
+            print(f"カレンダー更新エラー: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def update_calendar_from_properties(self):
+        """物件更新時にカレンダーを更新"""
+        try:
+            if "calendar" in self.pages:
+                calendar_tab = self.pages["calendar"]
+                # カレンダータブの更新メソッドを呼び出し
+                if hasattr(calendar_tab, 'load_schedule_data'):
+                    calendar_tab.load_schedule_data()
+                    if hasattr(calendar_tab, 'update_calendar'):
+                        calendar_tab.update_calendar()
+                print("カレンダーを物件更新に応じて更新しました")
+        except Exception as e:
+            print(f"カレンダー更新エラー: {e}")
+    
+    def update_calendar_from_customers(self):
+        """顧客更新時にカレンダーを更新"""
+        try:
+            if "calendar" in self.pages:
+                calendar_tab = self.pages["calendar"]
+                # カレンダータブの更新メソッドを呼び出し
+                if hasattr(calendar_tab, 'load_schedule_data'):
+                    calendar_tab.load_schedule_data()
+                    if hasattr(calendar_tab, 'update_calendar'):
+                        calendar_tab.update_calendar()
+                print("カレンダーを顧客更新に応じて更新しました")
+        except Exception as e:
+            print(f"カレンダー更新エラー: {e}")
+
+    def update_communications_from_customers(self):
+        """顧客更新・削除時に接点履歴を更新"""
+        try:
+            if "communications" in self.pages:
+                comm_tab = self.pages["communications"]
+                # 接点履歴タブの更新メソッドを呼び出し
+                if hasattr(comm_tab, 'load_communications'):
+                    comm_tab.load_communications()
+                print("接点履歴を顧客更新に応じて更新しました")
+        except Exception as e:
+            print(f"接点履歴更新エラー: {e}")
+
     def resizeEvent(self, event):
         """リサイズイベント処理"""
         super().resizeEvent(event)

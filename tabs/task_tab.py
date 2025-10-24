@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
                              QTableWidgetItem, QPushButton, QLabel, QLineEdit, 
                              QTextEdit, QMessageBox, QGroupBox, QFormLayout, 
-                             QComboBox, QDateEdit, QSpinBox, QDialog, QDialogButtonBox)
+                             QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox, QDialog, QDialogButtonBox)
 from PyQt6.QtCore import Qt, QDate
 import sys
 import os
@@ -10,6 +10,18 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models import Task, TenantContract, Customer, Unit, Property
+
+# マウスホイール無効化SpinBox
+class NoWheelSpinBox(QSpinBox):
+    """マウスホイールによる値変更を無効化したSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
+class NoWheelDoubleSpinBox(QDoubleSpinBox):
+    """マウスホイールによる値変更を無効化したDoubleSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
 
 class TaskTab(QWidget):
     def __init__(self):
@@ -48,13 +60,63 @@ class TaskTab(QWidget):
         
         # ボタン
         button_layout = QHBoxLayout()
-        self.add_button = QPushButton("登録")
+        self.add_button = QPushButton("💾 登録")
         self.add_button.clicked.connect(self.add_task)
+        self.add_button.setStyleSheet("""
+            QPushButton {
+                background-color: #10b981;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-size: 13px;
+                font-weight: 500;
+                min-height: 32px;
+            }
+            QPushButton:hover {
+                background-color: #059669;
+            }
+        """)
+
         self.clear_button = QPushButton("クリア")
         self.clear_button.clicked.connect(self.clear_form)
-        
+        self.clear_button.setStyleSheet("""
+            QPushButton {
+                background-color: #6b7280;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-size: 13px;
+                font-weight: 500;
+                min-height: 32px;
+            }
+            QPushButton:hover {
+                background-color: #4b5563;
+            }
+        """)
+
+        self.export_button = QPushButton("📊 CSV出力")
+        self.export_button.clicked.connect(self.export_to_csv)
+        self.export_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2563eb;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-size: 13px;
+                font-weight: 500;
+                min-height: 32px;
+            }
+            QPushButton:hover {
+                background-color: #1d4ed8;
+            }
+        """)
+
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.clear_button)
+        button_layout.addWidget(self.export_button)
         button_layout.addStretch()
         
         # テーブル
@@ -160,4 +222,39 @@ class TaskTab(QWidget):
         self.description_edit.clear()
         self.due_date_edit.setDate(QDate.currentDate())
         self.priority_combo.setCurrentIndex(1)  # normal
-        self.assigned_to_edit.clear() 
+        self.assigned_to_edit.clear()
+
+    def export_to_csv(self):
+        """タスク一覧をCSV出力"""
+        try:
+            import csv
+            from PyQt6.QtWidgets import QFileDialog
+
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "CSVファイルの保存", "タスク一覧.csv", "CSV Files (*.csv)"
+            )
+
+            if file_path:
+                with open(file_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
+                    writer = csv.writer(csvfile)
+
+                    # ヘッダー
+                    headers = []
+                    for col in range(self.table.columnCount()):
+                        headers.append(self.table.horizontalHeaderItem(col).text())
+                    writer.writerow(headers)
+
+                    # データ
+                    for row in range(self.table.rowCount()):
+                        row_data = []
+                        for col in range(self.table.columnCount()):
+                            item = self.table.item(row, col)
+                            row_data.append(item.text() if item else "")
+                        writer.writerow(row_data)
+
+                from utils import MessageHelper
+                MessageHelper.show_success(self, f"CSVファイルを出力しました:\n{file_path}")
+
+        except Exception as e:
+            from utils import MessageHelper
+            MessageHelper.show_error(self, f"CSV出力中にエラーが発生しました: {str(e)}")

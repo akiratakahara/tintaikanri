@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
                              QSizePolicy, QFrame)
 from PyQt6.QtCore import Qt, QDate
 from utils import MessageHelper, DateHelper, FormatHelper
-from models import Customer
+from models import Customer, Communication
 from ui.ui_styles import ModernStyles, ButtonHelper
 
 class CommunicationTabBasic(QWidget):
@@ -186,32 +186,27 @@ class CommunicationTabBasic(QWidget):
         
         form_group.setLayout(form_layout)
         form_group.setMaximumWidth(550)  # グループボックス幅を縮小
-        
-        # ボタン
-        button_layout = QHBoxLayout()
-        
+
+        # ボタン定義（レイアウトへの追加は後で行う）
         self.add_button = QPushButton("💾 登録")
         self.add_button.clicked.connect(self.add_communication)
         ButtonHelper.set_success(self.add_button)
-        
+
         self.edit_button = QPushButton("✏️ 編集")
         self.edit_button.clicked.connect(self.edit_communication)
         self.edit_button.setEnabled(False)
-        
+
         self.delete_button = QPushButton("🗑️ 削除")
         self.delete_button.clicked.connect(self.delete_communication)
         self.delete_button.setEnabled(False)
         ButtonHelper.set_danger(self.delete_button)
-        
+
         self.clear_button = QPushButton("クリア")
         self.clear_button.clicked.connect(self.clear_form)
-        
-        button_layout.addWidget(self.add_button)
-        button_layout.addWidget(self.edit_button)
-        button_layout.addWidget(self.delete_button)
-        button_layout.addWidget(self.clear_button)
-        button_layout.addStretch()
-        
+
+        self.export_button = QPushButton("📊 CSV出力")
+        self.export_button.clicked.connect(self.export_to_csv)
+
         # 検索・フィルター
         search_layout = QHBoxLayout()
         
@@ -477,11 +472,29 @@ class CommunicationTabBasic(QWidget):
                 background-color: #4b5563;
             }
         """)
-        
+
+        # CSV出力ボタンのスタイル
+        self.export_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2563eb;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-size: 13px;
+                font-weight: 500;
+                min-height: 32px;
+            }
+            QPushButton:hover {
+                background-color: #1d4ed8;
+            }
+        """)
+
         main_buttons_layout.addWidget(self.add_button)
         main_buttons_layout.addWidget(self.edit_button)
         main_buttons_layout.addWidget(self.delete_button)
         main_buttons_layout.addWidget(self.clear_button)
+        main_buttons_layout.addWidget(self.export_button)
         main_buttons_layout.addStretch()
         
         button_section_layout.addLayout(main_buttons_layout)
@@ -612,28 +625,20 @@ class CommunicationTabBasic(QWidget):
         """接点履歴を読み込み"""
         try:
             from models import Communication
-            # 新しいget_all()メソッドを使用（customer_nameも含む）
+            # データベースから接点履歴を取得
             self.communications = Communication.get_all()
-            
+
         except Exception as e:
-            # データベースに接続できない場合はダミーデータ
-            if not hasattr(self, 'dummy_loaded'):
-                self.communications = [
-                    {
-                        'id': 1,
-                        'customer_name': 'サンプル顧客A',
-                        'communication_type': '電話',
-                        'subject': 'サンプル問い合わせ',
-                        'content': '物件に関する問い合わせがありました。詳細を説明し、見学の予約を取りました。',
-                        'contact_date': QDate.currentDate().toString("yyyy-MM-dd"),
-                        'direction': '受信',
-                        'next_action': '明日見学予定',
-                        'created_at': QDate.currentDate().toString("yyyy-MM-dd")
-                    }
-                ]
-                self.dummy_loaded = True
-                print(f"接点履歴DB接続エラー（ダミーデータ使用）: {e}")
-        
+            # データベース接続エラーを明示的に表示
+            self.communications = []
+            import traceback
+            traceback.print_exc()
+            MessageHelper.show_error(
+                self,
+                f"接点履歴の読み込みに失敗しました\n\nエラー詳細: {str(e)}\n\nデータベース接続を確認してください。"
+            )
+            return
+
         self.apply_filters()
         self.update_header_stats()
     
@@ -741,53 +746,52 @@ class CommunicationTabBasic(QWidget):
             MessageHelper.show_warning(self, "件名を入力してください")
             return
         
-        comm_data = {
-            'id': max([comm.get('id', 0) for comm in self.communications], default=0) + 1,
-            'customer_name': customer_name,
-            'communication_type': self.communication_type_combo.currentText(),
-            'subject': subject,
-            'content': self.content_edit.toPlainText().strip(),
-            'contact_date': self.contact_date_edit.date().toString("yyyy-MM-dd"),
-            'direction': self.direction_combo.currentText(),
-            'next_action': self.next_action_edit.toPlainText().strip(),
-            'created_at': QDate.currentDate().toString("yyyy-MM-dd")
-        }
-        
         try:
             # データベースに保存を試行
             from models import Communication, Customer
-            # 簡易的に顧客を作成または取得
-            customers = Customer.get_all()
-            customer = next((c for c in customers if c['name'] == customer_name), None)
-            if not customer:
-                # 新規顧客として追加
-                customer_id = Customer.create(
-                    name=customer_name,
-                    phone=self.customer_phone_edit.text().strip() or None,
-                    email=self.customer_email_edit.text().strip() or None
-                )
+
+            # コンボボックスから顧客IDを取得
+            if customer_data:
+                # 既存顧客が選択されている場合
+                customer_id = customer_data
             else:
-                customer_id = customer['id']
-            
-            Communication.create(
+                # 手動入力の場合は、既存顧客を検索
+                customers = Customer.get_all()
+                customer = next((c for c in customers if c['name'] == customer_name), None)
+                if customer:
+                    # 既存顧客が見つかった
+                    customer_id = customer['id']
+                else:
+                    # 新規顧客として追加
+                    customer_id = Customer.create(
+                        name=customer_name,
+                        phone=self.customer_phone_edit.text().strip() or None,
+                        email=self.customer_email_edit.text().strip() or None
+                    )
+
+            # データベースに保存（IDが自動生成される）
+            comm_id = Communication.create(
                 customer_id=customer_id,
                 contract_id=None,
-                communication_type=comm_data['communication_type'],
-                subject=comm_data['subject'],
-                content=comm_data['content'] if comm_data['content'] else None,
-                contact_date=comm_data['contact_date'],
-                direction=comm_data['direction'],
-                next_action=comm_data['next_action'] if comm_data['next_action'] else None
+                communication_type=self.communication_type_combo.currentText(),
+                subject=subject,
+                content=self.content_edit.toPlainText().strip() or None,
+                contact_date=self.contact_date_edit.date().toString("yyyy-MM-dd"),
+                direction=self.direction_combo.currentText(),
+                next_action=self.next_action_edit.toPlainText().strip() or None
             )
+
+            MessageHelper.show_success(self, "接点履歴を登録しました")
+            self.clear_form()
+            self.load_communications()  # データベースから再読み込み
+            self.apply_filters()
+            self.update_header_stats()
+
         except Exception as e:
-            print(f"DB保存エラー（メモリのみ保存）: {e}")
-        
-        self.communications.insert(0, comm_data)  # 最新を先頭に
-        MessageHelper.show_success(self, "接点履歴を登録しました")
-        self.clear_form()
-        self.load_communications()  # 一覧を再読み込み
-        self.apply_filters()
-        self.update_header_stats()
+            print(f"DB保存エラー: {e}")
+            import traceback
+            traceback.print_exc()
+            MessageHelper.show_error(self, f"接点履歴の登録に失敗しました: {str(e)}")
     
     def edit_communication(self):
         """接点履歴を編集"""
@@ -842,44 +846,61 @@ class CommunicationTabBasic(QWidget):
         if not customer_name:
             MessageHelper.show_warning(self, "顧客名を入力してください")
             return
-        
+
         subject = self.subject_edit.text().strip()
         if not subject:
             MessageHelper.show_warning(self, "件名を入力してください")
             return
-        
-        # 対象接点履歴を更新
-        for comm in self.communications:
-            if comm.get('id') == comm_id:
-                comm['customer_name'] = customer_name
-                comm['communication_type'] = self.communication_type_combo.currentText()
-                comm['subject'] = subject
-                comm['content'] = self.content_edit.toPlainText().strip()
-                comm['contact_date'] = self.contact_date_edit.date().toString("yyyy-MM-dd")
-                comm['direction'] = self.direction_combo.currentText()
-                comm['next_action'] = self.next_action_edit.toPlainText().strip()
-                break
-        
-        MessageHelper.show_success(self, "接点履歴を更新しました")
-        self.reset_add_mode()
-        self.apply_filters()
-        self.update_header_stats()
+
+        # customer_idを取得
+        customer_id = customer_data if customer_data else None
+        if not customer_id:
+            MessageHelper.show_warning(self, "有効な顧客を選択してください")
+            return
+
+        try:
+            # データベースを更新
+            Communication.update(
+                comm_id,
+                customer_id=customer_id,
+                communication_type=self.communication_type_combo.currentText(),
+                subject=subject,
+                content=self.content_edit.toPlainText().strip() or None,
+                contact_date=self.contact_date_edit.date().toString("yyyy-MM-dd"),
+                direction=self.direction_combo.currentText(),
+                next_action=self.next_action_edit.toPlainText().strip() or None
+            )
+
+            MessageHelper.show_success(self, "接点履歴を更新しました")
+            self.reset_add_mode()
+            self.load_communications()  # データベースから再読み込み
+            self.update_header_stats()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            MessageHelper.show_error(self, f"接点履歴の更新に失敗しました: {str(e)}")
     
     def delete_communication(self):
         """接点履歴を削除"""
         comm_id = self.get_selected_communication_id()
         if not comm_id:
             return
-        
+
         comm = next((c for c in self.communications if c.get('id') == comm_id), None)
         if not comm:
             return
-        
+
         if MessageHelper.confirm_delete(self, f"接点履歴「{comm.get('subject', '')}」"):
-            self.communications = [c for c in self.communications if c.get('id') != comm_id]
-            MessageHelper.show_success(self, "接点履歴を削除しました")
-            self.apply_filters()
-        self.update_header_stats()
+            try:
+                # データベースから削除
+                Communication.delete(comm_id)
+                MessageHelper.show_success(self, "接点履歴を削除しました")
+                self.load_communications()  # データベースから再読み込み
+                self.update_header_stats()
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                MessageHelper.show_error(self, f"接点履歴の削除に失敗しました: {str(e)}")
     
     def clear_form(self):
         """フォームをクリア"""
@@ -899,3 +920,52 @@ class CommunicationTabBasic(QWidget):
         self.add_button.setText("登録")
         self.add_button.clicked.disconnect()
         self.add_button.clicked.connect(self.add_communication)
+
+    def export_to_csv(self):
+        """接点履歴をCSV出力"""
+        try:
+            import csv
+            from PyQt6.QtWidgets import QFileDialog
+            from models import Communication
+
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "CSVファイルの保存", "接点履歴.csv", "CSV Files (*.csv)"
+            )
+
+            if file_path:
+                with open(file_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
+                    writer = csv.writer(csvfile)
+
+                    # ヘッダー（内容列を追加）
+                    writer.writerow([
+                        "ID", "顧客名", "接点種別", "件名", "内容", "接触日",
+                        "方向", "次回アクション", "登録日"
+                    ])
+
+                    # データ（表示されている行から元データを取得）
+                    for row in range(self.table.rowCount()):
+                        if not self.table.isRowHidden(row):
+                            # テーブルからIDを取得
+                            id_item = self.table.item(row, 0)
+                            if id_item:
+                                comm_id = int(id_item.text())
+                                # 元データから該当レコードを検索
+                                comm = next((c for c in self.communications if c.get('id') == comm_id), None)
+                                if comm:
+                                    row_data = [
+                                        comm.get('id', ''),
+                                        comm.get('customer_name', ''),
+                                        comm.get('communication_type', ''),
+                                        comm.get('subject', ''),
+                                        comm.get('content', ''),  # 内容を追加
+                                        comm.get('contact_date', ''),
+                                        comm.get('direction', ''),
+                                        comm.get('next_action', ''),
+                                        comm.get('created_at', '')
+                                    ]
+                                    writer.writerow(row_data)
+
+                MessageHelper.show_success(self, f"CSVファイルを出力しました:\n{file_path}")
+
+        except Exception as e:
+            MessageHelper.show_error(self, f"CSV出力中にエラーが発生しました: {str(e)}")

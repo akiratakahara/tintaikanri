@@ -1,8 +1,8 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
-                             QTableWidgetItem, QPushButton, QLabel, QLineEdit, 
-                             QTextEdit, QMessageBox, QGroupBox, QFormLayout, 
-                             QComboBox, QDateEdit, QSpinBox, QDialog, QDialogButtonBox, QTabWidget)
-from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
+                             QTableWidgetItem, QPushButton, QLabel, QLineEdit,
+                             QTextEdit, QMessageBox, QGroupBox, QFormLayout,
+                             QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox, QDialog, QDialogButtonBox, QTabWidget, QInputDialog)
+from PyQt6.QtCore import Qt, QDate, pyqtSignal
 import sys
 import os
 
@@ -10,9 +10,25 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models import Customer, OwnerProfile, TenantProfile, Property, Unit
+from utils import MessageHelper
+
+# マウスホイール無効化SpinBox
+class NoWheelSpinBox(QSpinBox):
+    """マウスホイールによる値変更を無効化したSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
+class NoWheelDoubleSpinBox(QDoubleSpinBox):
+    """マウスホイールによる値変更を無効化したDoubleSpinBox"""
+    def wheelEvent(self, event):
+        event.ignore()
+
 
 class CustomerTab(QWidget):
     """顧客管理タブ"""
+    
+    # シグナル定義
+    customer_updated = pyqtSignal()
     
     def __init__(self):
         super().__init__()
@@ -71,12 +87,20 @@ class CustomerTab(QWidget):
         self.add_button.clicked.connect(self.add_customer)
         self.update_button = QPushButton("更新")
         self.update_button.clicked.connect(self.update_customer)
+        self.delete_button = QPushButton("🗑️ 削除")
+        self.delete_button.clicked.connect(self.delete_customer)
+        self.delete_button.setEnabled(False)
+        self.delete_button.setStyleSheet("QPushButton { background-color: #f44336; color: white; border-radius: 4px; padding: 8px; }")
         self.clear_button = QPushButton("クリア")
         self.clear_button.clicked.connect(self.clear_form)
-        
+        self.export_button = QPushButton("CSV出力")
+        self.export_button.clicked.connect(self.export_to_csv)
+
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.update_button)
+        button_layout.addWidget(self.delete_button)
         button_layout.addWidget(self.clear_button)
+        button_layout.addWidget(self.export_button)
         button_layout.addStretch()
         
         # 顧客一覧テーブル
@@ -167,7 +191,7 @@ class CustomerTab(QWidget):
     def add_customer(self):
         name = self.name_edit.text().strip()
         if not name:
-            QMessageBox.warning(self, "警告", "顧客名を入力してください。")
+            MessageHelper.show_warning(self, "顧客名を入力してください。")
             return
         
         try:
@@ -190,12 +214,15 @@ class CustomerTab(QWidget):
             else:
                 TenantProfile.create(customer_id=customer_id)
             
-            QMessageBox.information(self, "成功", "顧客を登録しました。")
+            MessageHelper.show_success(self, "顧客を登録しました。")
             self.clear_form()
             self.load_customers()
-            
+
+            # 接点履歴タブの顧客リストを更新
+            self.refresh_communication_customers()
+
         except Exception as e:
-            QMessageBox.critical(self, "エラー", f"顧客登録中にエラーが発生しました: {str(e)}")
+            MessageHelper.show_error(self, f"顧客登録中にエラーが発生しました: {str(e)}")
     
     def clear_form(self):
         self.name_edit.clear()
@@ -204,6 +231,8 @@ class CustomerTab(QWidget):
         self.email_edit.clear()
         self.address_edit.clear()
         self.memo_edit.clear()
+        self.current_customer_id = None
+        self.delete_button.setEnabled(False)
     
     def load_customers(self):
         try:
@@ -220,13 +249,16 @@ class CustomerTab(QWidget):
                 self.customer_table.setItem(i, 5, QTableWidgetItem(customer['address'] or ""))
             
         except Exception as e:
-            QMessageBox.critical(self, "エラー", f"顧客一覧の読み込み中にエラーが発生しました: {str(e)}")
+            MessageHelper.show_error(self, f"顧客一覧の読み込み中にエラーが発生しました: {str(e)}")
     
     def on_customer_selected(self, row, column):
         """顧客が選択されたときの処理"""
         try:
             customer_id = int(self.customer_table.item(row, 0).text())
             self.current_customer_id = customer_id
+            
+            # 削除ボタンを有効化
+            self.delete_button.setEnabled(True)
             
             # 顧客情報をフォームに読み込み
             customer = Customer.get_by_id(customer_id)
@@ -257,12 +289,12 @@ class CustomerTab(QWidget):
     def update_customer(self):
         """顧客情報を更新"""
         if not self.current_customer_id:
-            QMessageBox.warning(self, "警告", "更新する顧客を選択してください")
+            MessageHelper.show_warning(self, "更新する顧客を選択してください")
             return
         
         name = self.name_edit.text().strip()
         if not name:
-            QMessageBox.warning(self, "警告", "顧客名を入力してください")
+            MessageHelper.show_warning(self, "顧客名を入力してください")
             return
         
         try:
@@ -279,11 +311,11 @@ class CustomerTab(QWidget):
                 memo=self.memo_edit.toPlainText().strip()
             )
             
-            QMessageBox.information(self, "成功", "顧客情報を更新しました")
+            MessageHelper.show_success(self, "顧客情報を更新しました")
             self.load_customers()
             
         except Exception as e:
-            QMessageBox.critical(self, "エラー", f"顧客情報更新中にエラーが発生しました: {str(e)}")
+            MessageHelper.show_error(self, f"顧客情報更新中にエラーが発生しました: {str(e)}")
     
     def load_property_combo(self):
         """物件コンボボックスを読み込み"""
@@ -300,28 +332,29 @@ class CustomerTab(QWidget):
         if not self.current_customer_id:
             QMessageBox.warning(self, "警告", "オーナーを選択してください")
             return
-        
+
         # 顧客がオーナーかチェック
         customer = Customer.get_by_id(self.current_customer_id)
         if not customer or customer.get('type') != 'owner':
             QMessageBox.warning(self, "警告", "選択された顧客はオーナーではありません")
             return
-        
+
         property_id = self.property_combo.currentData()
         if not property_id:
             QMessageBox.warning(self, "警告", "物件を選択してください")
             return
-        
+
         # 所有比率を入力
         ratio, ok = QInputDialog.getDouble(
             self, "所有比率", "所有比率(%)を入力:", 100.0, 0.0, 100.0, 2
         )
         if not ok:
             return
-        
+
         try:
             Property.add_owner(property_id, self.current_customer_id, ratio, is_primary=(ratio >= 50))
             self.load_owned_properties()
+            self.load_property_combo()  # 物件コンボボックスを更新
             QMessageBox.information(self, "成功", "物件を追加しました")
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"物件追加中にエラーが発生しました: {str(e)}")
@@ -331,12 +364,12 @@ class CustomerTab(QWidget):
         if not self.current_customer_id:
             self.owned_properties_table.setRowCount(0)
             return
-        
+
         try:
             # 全物件から該当オーナーの所有物件を検索
             all_properties = Property.get_all()
             owned_properties = []
-            
+
             for prop in all_properties:
                 owners = Property.get_owners(prop['id'])
                 for owner in owners:
@@ -345,7 +378,7 @@ class CustomerTab(QWidget):
                         prop_data.update(owner)
                         owned_properties.append(prop_data)
                         break
-            
+
             self.owned_properties_table.setRowCount(len(owned_properties))
             
             for row, prop in enumerate(owned_properties):
@@ -354,11 +387,11 @@ class CustomerTab(QWidget):
                 self.owned_properties_table.setItem(row, 2, QTableWidgetItem(f"{prop.get('ownership_ratio', 0):.1f}"))
                 self.owned_properties_table.setItem(row, 3, QTableWidgetItem("主要" if prop.get('is_primary') else ""))
                 self.owned_properties_table.setItem(row, 4, QTableWidgetItem(prop.get('start_date', '')))
-                
-                # 削除ボタン
+
+                # 削除ボタン（property_idを渡す）
                 delete_button = QPushButton("削除")
                 delete_button.clicked.connect(
-                    lambda checked, pid=prop['id']: self.remove_property_from_owner(pid)
+                    lambda checked, pid=prop['property_id']: self.remove_property_from_owner(pid)
                 )
                 self.owned_properties_table.setCellWidget(row, 5, delete_button)
                 
@@ -398,10 +431,10 @@ class CustomerTab(QWidget):
                 self.owned_units_table.setItem(row, 4, QTableWidgetItem(f"{unit.get('ownership_ratio', 0):.1f}"))
                 self.owned_units_table.setItem(row, 5, QTableWidgetItem("主要" if unit.get('is_primary') else ""))
                 
-                # 削除ボタン
+                # 削除ボタン（unit_idを渡す）
                 delete_button = QPushButton("削除")
                 delete_button.clicked.connect(
-                    lambda checked, uid=unit['id']: self.remove_unit_from_owner(uid)
+                    lambda checked, uid=unit['unit_id']: self.remove_unit_from_owner(uid)
                 )
                 self.owned_units_table.setCellWidget(row, 6, delete_button)
                 
@@ -412,26 +445,134 @@ class CustomerTab(QWidget):
         """オーナーから物件を削除"""
         if not self.current_customer_id:
             return
-        
-        reply = QMessageBox.question(self, "確認", "この物件をオーナーから削除しますか？")
-        if reply == QMessageBox.StandardButton.Yes:
+
+        if MessageHelper.confirm_delete(self, "この物件をオーナーから削除"):
             try:
                 Property.remove_owner(property_id, self.current_customer_id)
+                # テーブルを強制的に更新
                 self.load_owned_properties()
-                QMessageBox.information(self, "成功", "物件を削除しました")
+                self.load_owned_units()
+                self.load_property_combo()  # 物件コンボボックスも更新
+                MessageHelper.show_success(self, "物件を削除しました")
             except Exception as e:
-                QMessageBox.critical(self, "エラー", f"物件削除中にエラーが発生しました: {str(e)}")
+                MessageHelper.show_error(self, f"物件削除中にエラーが発生しました: {str(e)}")
     
     def remove_unit_from_owner(self, unit_id):
         """オーナーから部屋を削除"""
         if not self.current_customer_id:
             return
         
-        reply = QMessageBox.question(self, "確認", "この部屋をオーナーから削除しますか？")
-        if reply == QMessageBox.StandardButton.Yes:
+        if MessageHelper.confirm_delete(self, "この部屋をオーナーから削除"):
             try:
                 Unit.remove_owner(unit_id, self.current_customer_id)
                 self.load_owned_units()
-                QMessageBox.information(self, "成功", "部屋を削除しました")
+                MessageHelper.show_success(self, "部屋を削除しました")
             except Exception as e:
-                QMessageBox.critical(self, "エラー", f"部屋削除中にエラーが発生しました: {str(e)}") 
+                MessageHelper.show_error(self, f"部屋削除中にエラーが発生しました: {str(e)}")
+    
+    def delete_customer(self):
+        """顧客を削除"""
+        if not self.current_customer_id:
+            MessageHelper.show_warning(self, "削除する顧客を選択してください")
+            return
+        
+        # 顧客情報を取得
+        customer = Customer.get_by_id(self.current_customer_id)
+        if not customer:
+            MessageHelper.show_warning(self, "顧客情報が見つかりません")
+            return
+        
+        customer_name = customer.get('name', '')
+        customer_type = "オーナー" if customer.get('type') == 'owner' else "テナント"
+
+        # 関連データの件数を取得
+        related_counts = Customer.get_related_data_count(self.current_customer_id)
+
+        # 削除確認メッセージを構築
+        warning_msg = f"{customer_type}顧客「{customer_name}」を削除します。\n\n"
+        warning_msg += "以下の関連データも削除されます:\n"
+        warning_msg += f"  ・接点履歴: {related_counts['communications']}件\n"
+        warning_msg += f"  ・契約: {related_counts['contracts']}件\n"
+        warning_msg += f"  ・プロフィール: {related_counts['owner_profiles'] + related_counts['tenant_profiles']}件\n"
+        warning_msg += "\n削除してもよろしいですか？"
+
+        # 確認ダイアログ
+        reply = QMessageBox.warning(
+            self,
+            "削除確認",
+            warning_msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                # 顧客を削除（関連データも削除）
+                Customer.delete(self.current_customer_id)
+                
+                # フォームをクリア
+                self.clear_form()
+                self.current_customer_id = None
+                self.delete_button.setEnabled(False)
+                
+                # 顧客一覧を更新
+                self.load_customers()
+                
+                # 所有物件管理タブもクリア
+                self.selected_customer_label.setText("選択されていません")
+                self.owned_properties_table.setRowCount(0)
+                self.owned_units_table.setRowCount(0)
+                
+                MessageHelper.show_success(self, f"顧客「{customer_name}」を削除しました")
+                
+                # カレンダー更新のためのシグナル発信
+                self.customer_updated.emit()
+
+            except Exception as e:
+                MessageHelper.show_error(self, f"顧客削除中にエラーが発生しました: {str(e)}")
+
+    def export_to_csv(self):
+        """顧客一覧をCSV出力"""
+        try:
+            import csv
+            from PyQt6.QtWidgets import QFileDialog
+
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "CSVファイルの保存", "顧客一覧.csv", "CSV Files (*.csv)"
+            )
+
+            if file_path:
+                with open(file_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
+                    writer = csv.writer(csvfile)
+
+                    # ヘッダー
+                    headers = []
+                    for col in range(self.customer_table.columnCount()):
+                        headers.append(self.customer_table.horizontalHeaderItem(col).text())
+                    writer.writerow(headers)
+
+                    # データ
+                    for row in range(self.customer_table.rowCount()):
+                        row_data = []
+                        for col in range(self.customer_table.columnCount()):
+                            item = self.customer_table.item(row, col)
+                            row_data.append(item.text() if item else "")
+                        writer.writerow(row_data)
+
+                MessageHelper.show_success(self, f"CSVファイルを出力しました:\n{file_path}")
+
+        except Exception as e:
+            MessageHelper.show_error(self, f"CSV出力中にエラーが発生しました: {str(e)}")
+
+    def refresh_communication_customers(self):
+        """接点履歴タブの顧客リストを更新"""
+        try:
+            # 親ウィンドウ（ModernMainWindow）から接点履歴タブを取得
+            main_window = self.window()
+            if hasattr(main_window, 'pages') and 'communications' in main_window.pages:
+                comm_tab = main_window.pages['communications']
+                if hasattr(comm_tab, 'load_customers_to_combo'):
+                    comm_tab.load_customers_to_combo()
+        except Exception as e:
+            # エラーが発生しても顧客登録自体は成功しているので、エラー表示はしない
+            print(f"接点履歴タブの顧客リスト更新エラー: {e}")

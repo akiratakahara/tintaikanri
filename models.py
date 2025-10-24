@@ -592,24 +592,51 @@ class Customer:
         conn.close()
     
     @staticmethod
+    def get_related_data_count(customer_id: int) -> Dict[str, int]:
+        """顧客に関連するデータの件数を取得"""
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        counts = {}
+
+        # 接点履歴の件数
+        cursor.execute('SELECT COUNT(*) FROM communications WHERE customer_id = ?', (customer_id,))
+        counts['communications'] = cursor.fetchone()[0]
+
+        # 契約の件数
+        cursor.execute('SELECT COUNT(*) FROM tenant_contracts WHERE customer_id = ?', (customer_id,))
+        counts['contracts'] = cursor.fetchone()[0]
+
+        # オーナープロフィール
+        cursor.execute('SELECT COUNT(*) FROM owner_profiles WHERE customer_id = ?', (customer_id,))
+        counts['owner_profiles'] = cursor.fetchone()[0]
+
+        # テナントプロフィール
+        cursor.execute('SELECT COUNT(*) FROM tenant_profiles WHERE customer_id = ?', (customer_id,))
+        counts['tenant_profiles'] = cursor.fetchone()[0]
+
+        conn.close()
+        return counts
+
+    @staticmethod
     def delete(customer_id: int):
         """顧客を削除（関連データも削除）"""
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         try:
             # 関連するプロフィールを削除
             cursor.execute('DELETE FROM owner_profiles WHERE customer_id = ?', (customer_id,))
             cursor.execute('DELETE FROM tenant_profiles WHERE customer_id = ?', (customer_id,))
-            
+
             # 関連する接点履歴を削除
             cursor.execute('DELETE FROM communications WHERE customer_id = ?', (customer_id,))
-            
+
             # 顧客を削除
             cursor.execute('DELETE FROM customers WHERE id = ?', (customer_id,))
-            
+
             conn.commit()
-            
+
         except Exception as e:
             conn.rollback()
             raise e
@@ -942,12 +969,30 @@ class Property:
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
+            # 既に削除済みのレコードがあるか確認
             cursor.execute('''
-                INSERT INTO property_owners (property_id, owner_id, ownership_ratio, 
-                                            is_primary, start_date, notes)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (property_id, owner_id, ownership_ratio, is_primary, start_date, notes))
-            owner_relation_id = cursor.lastrowid
+                SELECT id FROM property_owners
+                WHERE property_id = ? AND owner_id = ? AND end_date IS NOT NULL
+            ''', (property_id, owner_id))
+            existing = cursor.fetchone()
+
+            if existing:
+                # 削除済みレコードを再利用（復活）
+                owner_relation_id = existing[0]
+                cursor.execute('''
+                    UPDATE property_owners
+                    SET end_date = NULL, ownership_ratio = ?, is_primary = ?,
+                        start_date = ?, notes = ?
+                    WHERE id = ?
+                ''', (ownership_ratio, is_primary, start_date, notes, owner_relation_id))
+            else:
+                # 新規作成
+                cursor.execute('''
+                    INSERT INTO property_owners (property_id, owner_id, ownership_ratio,
+                                                is_primary, start_date, notes)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (property_id, owner_id, ownership_ratio, is_primary, start_date, notes))
+                owner_relation_id = cursor.lastrowid
             conn.commit()
             
             # アクティビティログを記録
@@ -978,7 +1023,7 @@ class Property:
             SELECT po.*, c.name as owner_name, c.phone, c.email, c.type
             FROM property_owners po
             JOIN customers c ON po.owner_id = c.id
-            WHERE po.property_id = ? AND (po.end_date IS NULL OR po.end_date >= date('now'))
+            WHERE po.property_id = ? AND (po.end_date IS NULL OR po.end_date > date('now'))
             ORDER BY po.is_primary DESC, po.ownership_ratio DESC
         ''', (property_id,))
         owners = [dict(row) for row in cursor.fetchall()]
@@ -993,9 +1038,9 @@ class Property:
         if not end_date:
             from datetime import date
             end_date = date.today().isoformat()
-        
+
         cursor.execute('''
-            UPDATE property_owners 
+            UPDATE property_owners
             SET end_date = ?
             WHERE property_id = ? AND owner_id = ? AND end_date IS NULL
         ''', (end_date, property_id, owner_id))
@@ -1132,12 +1177,30 @@ class Unit:
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
+            # 既に削除済みのレコードがあるか確認
             cursor.execute('''
-                INSERT INTO unit_owners (unit_id, owner_id, ownership_ratio, 
-                                        is_primary, start_date, notes)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (unit_id, owner_id, ownership_ratio, is_primary, start_date, notes))
-            owner_relation_id = cursor.lastrowid
+                SELECT id FROM unit_owners
+                WHERE unit_id = ? AND owner_id = ? AND end_date IS NOT NULL
+            ''', (unit_id, owner_id))
+            existing = cursor.fetchone()
+
+            if existing:
+                # 削除済みレコードを再利用（復活）
+                owner_relation_id = existing[0]
+                cursor.execute('''
+                    UPDATE unit_owners
+                    SET end_date = NULL, ownership_ratio = ?, is_primary = ?,
+                        start_date = ?, notes = ?
+                    WHERE id = ?
+                ''', (ownership_ratio, is_primary, start_date, notes, owner_relation_id))
+            else:
+                # 新規作成
+                cursor.execute('''
+                    INSERT INTO unit_owners (unit_id, owner_id, ownership_ratio,
+                                            is_primary, start_date, notes)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (unit_id, owner_id, ownership_ratio, is_primary, start_date, notes))
+                owner_relation_id = cursor.lastrowid
             conn.commit()
             
             # アクティビティログを記録
@@ -1168,7 +1231,7 @@ class Unit:
             SELECT uo.*, c.name as owner_name, c.phone, c.email, c.type
             FROM unit_owners uo
             JOIN customers c ON uo.owner_id = c.id
-            WHERE uo.unit_id = ? AND (uo.end_date IS NULL OR uo.end_date >= date('now'))
+            WHERE uo.unit_id = ? AND (uo.end_date IS NULL OR uo.end_date > date('now'))
             ORDER BY uo.is_primary DESC, uo.ownership_ratio DESC
         ''', (unit_id,))
         owners = [dict(row) for row in cursor.fetchall()]
@@ -1198,19 +1261,29 @@ class TenantContract:
     def create(unit_id: int, contractor_name: str, start_date: str = None, end_date: str = None,
                rent: int = None, maintenance_fee: int = None, security_deposit: int = None,
                key_money: int = None, renewal_method: str = None, insurance_flag: bool = False,
-               renewal_notice_days: int = 60, renewal_deadline_days: int = 30, 
-               auto_create_tasks: bool = True, memo: str = None, customer_id: int = None) -> int:
+               renewal_notice_days: int = 60, renewal_deadline_days: int = 30,
+               owner_cancellation_notice_days: int = 180, tenant_cancellation_notice_days: int = 30,
+               auto_create_tasks: bool = True, memo: str = None, customer_id: int = None,
+               contract_status: str = 'active', renewal_terms: str = None, tenant_phone: str = None,
+               tenant_name: str = None, notes: str = None, mediation_type: str = '片手仲介',
+               party_type: str = 'テナント（借主）') -> int:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO tenant_contracts (unit_id, contractor_name, start_date, end_date,
                                         rent, maintenance_fee, security_deposit, key_money,
                                         renewal_method, insurance_flag, renewal_notice_days,
-                                        renewal_deadline_days, auto_create_tasks, memo, customer_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        renewal_deadline_days, owner_cancellation_notice_days,
+                                        tenant_cancellation_notice_days, auto_create_tasks, memo, customer_id,
+                                        contract_status, renewal_terms, tenant_phone, tenant_name, notes,
+                                        mediation_type, party_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (unit_id, contractor_name, start_date, end_date, rent, maintenance_fee,
-              security_deposit, key_money, renewal_method, insurance_flag, 
-              renewal_notice_days, renewal_deadline_days, auto_create_tasks, memo, customer_id))
+              security_deposit, key_money, renewal_method, insurance_flag,
+              renewal_notice_days, renewal_deadline_days, owner_cancellation_notice_days,
+              tenant_cancellation_notice_days, auto_create_tasks, memo, customer_id,
+              contract_status, renewal_terms, tenant_phone, tenant_name, notes,
+              mediation_type, party_type))
         contract_id = cursor.lastrowid
         conn.commit()
         conn.close()
@@ -1231,8 +1304,8 @@ class TenantContract:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT tc.*, p.name as property_name, 
-                   u.room_number, u.floor
+            SELECT tc.*, p.name as property_name,
+                   u.room_number, u.floor, u.property_id
             FROM tenant_contracts tc
             LEFT JOIN units u ON tc.unit_id = u.id
             LEFT JOIN properties p ON u.property_id = p.id
@@ -1288,7 +1361,64 @@ class TenantContract:
         ))
         conn.commit()
         conn.close()
-    
+
+    @staticmethod
+    def update(contract_id: int, **kwargs):
+        """契約情報を更新"""
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 更新可能なフィールドのリスト
+        allowed_fields = [
+            'unit_id', 'contractor_name', 'start_date', 'end_date',
+            'rent', 'maintenance_fee', 'security_deposit', 'key_money',
+            'renewal_method', 'insurance_flag', 'renewal_notice_days',
+            'renewal_deadline_days', 'auto_create_tasks', 'memo', 'customer_id',
+            'tenant_commission_months', 'landlord_commission_months',
+            'tenant_commission_amount', 'landlord_commission_amount',
+            'advertising_fee', 'advertising_fee_included', 'commission_notes',
+            'owner_cancellation_notice_days', 'tenant_cancellation_notice_days',
+            'contract_status', 'renewal_terms', 'tenant_phone', 'tenant_name', 'notes',
+            'mediation_type', 'party_type'
+        ]
+
+        # 更新するフィールドと値を抽出
+        update_fields = []
+        update_values = []
+
+        for field, value in kwargs.items():
+            if field in allowed_fields and value is not None:
+                update_fields.append(f'{field} = ?')
+                update_values.append(value)
+
+        if not update_fields:
+            conn.close()
+            return
+
+        # updated_atも更新
+        update_fields.append('updated_at = CURRENT_TIMESTAMP')
+
+        # SQL実行
+        sql = f"UPDATE tenant_contracts SET {', '.join(update_fields)} WHERE id = ?"
+        update_values.append(contract_id)
+
+        cursor.execute(sql, update_values)
+        conn.commit()
+
+        # アクティビティログを記録
+        cursor.execute('SELECT contractor_name FROM tenant_contracts WHERE id = ?', (contract_id,))
+        result = cursor.fetchone()
+        if result:
+            ActivityLog.log(
+                activity_type='UPDATE',
+                entity_type='contract',
+                entity_id=contract_id,
+                entity_name=result[0],
+                description=f'契約「{result[0]}」を更新しました'
+            )
+
+        conn.close()
+
     @staticmethod
     def delete(contract_id: int):
         """契約を削除（関連するタスク、書類、チェックリストも削除）"""
@@ -1310,6 +1440,9 @@ class TenantContract:
             
             # 関連する接点履歴を削除
             cursor.execute('DELETE FROM communications WHERE contract_id = ?', (contract_id,))
+            
+            # 関連する手続きログを削除
+            cursor.execute('DELETE FROM contract_procedure_logs WHERE contract_id = ?', (contract_id,))
             
             # 契約を削除
             cursor.execute('DELETE FROM tenant_contracts WHERE id = ?', (contract_id,))
@@ -1596,6 +1729,79 @@ class Communication:
         communications = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return communications
+
+    @staticmethod
+    def update(comm_id: int, **kwargs) -> bool:
+        """接点履歴を更新"""
+        allowed_fields = ['customer_id', 'contract_id', 'communication_type', 'subject',
+                         'content', 'contact_date', 'direction', 'next_action']
+
+        # 許可されたフィールドのみを抽出
+        update_data = {k: v for k, v in kwargs.items() if k in allowed_fields}
+
+        if not update_data:
+            return False
+
+        # SET句を構築
+        set_clause = ', '.join([f"{field} = ?" for field in update_data.keys()])
+        values = list(update_data.values())
+        values.append(comm_id)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 元のデータを取得（ログ用）
+        cursor.execute('SELECT subject, communication_type FROM communications WHERE id = ?', (comm_id,))
+        old_data = cursor.fetchone()
+
+        # 更新実行
+        cursor.execute(f'UPDATE communications SET {set_clause} WHERE id = ?', values)
+        conn.commit()
+        conn.close()
+
+        # アクティビティログを記録
+        if old_data:
+            subject = kwargs.get('subject', old_data['subject'])
+            comm_type = kwargs.get('communication_type', old_data['communication_type'])
+            ActivityLog.log(
+                activity_type='UPDATE',
+                entity_type='communication',
+                entity_id=comm_id,
+                entity_name=subject or comm_type,
+                description=f'{comm_type}「{subject or ""}」を更新しました'
+            )
+
+        return True
+
+    @staticmethod
+    def delete(comm_id: int) -> bool:
+        """接点履歴を削除"""
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 削除前にデータを取得（ログ用）
+        cursor.execute('SELECT subject, communication_type FROM communications WHERE id = ?', (comm_id,))
+        comm_data = cursor.fetchone()
+
+        if not comm_data:
+            conn.close()
+            return False
+
+        # 削除実行
+        cursor.execute('DELETE FROM communications WHERE id = ?', (comm_id,))
+        conn.commit()
+        conn.close()
+
+        # アクティビティログを記録
+        ActivityLog.log(
+            activity_type='DELETE',
+            entity_type='communication',
+            entity_id=comm_id,
+            entity_name=comm_data['subject'] or comm_data['communication_type'],
+            description=f'{comm_data["communication_type"]}「{comm_data["subject"] or ""}」を削除しました'
+        )
+
+        return True
 
 # 参考物件クラス（新規）
 class ReferenceProperty:
