@@ -229,10 +229,15 @@ class PropertyUnifiedManagement(QWidget):
         export_csv_btn.setStyleSheet(ModernStyles.get_button_styles())
         export_csv_btn.clicked.connect(self.export_to_csv)
 
+        import_csv_btn = QPushButton("📥 CSV取込")
+        import_csv_btn.setStyleSheet(ModernStyles.get_button_styles())
+        import_csv_btn.clicked.connect(self.import_from_csv)
+
         quick_action_layout.addWidget(new_property_btn)
         quick_action_layout.addWidget(refresh_btn)
         quick_action_layout.addWidget(view_details_btn)
         quick_action_layout.addWidget(export_csv_btn)
+        quick_action_layout.addWidget(import_csv_btn)
         quick_action_layout.addStretch()
         
         quick_action_group.setLayout(quick_action_layout)
@@ -2044,6 +2049,53 @@ class UnitAddDialog(QDialog):
             )
             
             self.accept()
-            
+
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"部屋の追加に失敗しました: {str(e)}")
+
+
+# PropertyUnifiedManagementクラスにインポートメソッドを追加するための拡張
+def _add_import_method_to_property_tab():
+    """物件タブにインポートメソッドを追加"""
+
+    def import_from_csv(self):
+        """CSVファイルから物件データをインポート"""
+        try:
+            from data_importer import PropertyImporter
+
+            # ファイル選択ダイアログ
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "物件CSVファイルを選択",
+                "",
+                "CSVファイル (*.csv);;Excelファイル (*.xlsx *.xls);;すべてのファイル (*)"
+            )
+
+            if not file_path:
+                return
+
+            # インポート実行
+            success, count, message = PropertyImporter.import_properties(file_path)
+
+            if success:
+                QMessageBox.information(self, "インポート完了", message)
+                # データを更新
+                self.load_property_tree()
+            else:
+                QMessageBox.warning(self, "インポートエラー", message)
+
+        except ImportError:
+            QMessageBox.critical(
+                self,
+                "エラー",
+                "data_importer.pyが見つかりません。\n"
+                "システムファイルが正しくインストールされているか確認してください。"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"インポート処理中にエラーが発生しました:\n{str(e)}")
+
+    # PropertyUnifiedManagementクラスにメソッドを追加
+    PropertyUnifiedManagement.import_from_csv = import_from_csv
+
+# クラス定義後に拡張を実行
+_add_import_method_to_property_tab()

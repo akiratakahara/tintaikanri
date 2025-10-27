@@ -7,17 +7,31 @@ import hashlib
 import uuid
 import os
 from datetime import datetime, timedelta
+from pathlib import Path
 
 
 class LicenseManager:
     """ライセンスキーの生成・検証を管理するクラス"""
 
     def __init__(self):
-        self.license_file = 'license.key'
-        self.trial_file = 'trial.dat'
+        # ライセンスファイルもユーザーのドキュメントフォルダに保存
+        self.data_dir = self._get_data_directory()
+        self.license_file = str(self.data_dir / 'license.key')
+        self.trial_file = str(self.data_dir / 'trial.dat')
         # 重要: 本番環境では必ず変更してください
         self.secret = "TintaiKanri2024SecretKey_ChangeThis!@#"
-        self.trial_days = 14  # トライアル期間
+        self.trial_days = 30  # トライアル期間（30日間）
+
+    def _get_data_directory(self):
+        """アプリケーションのデータディレクトリを取得"""
+        if os.name == 'nt':  # Windows
+            documents = Path(os.path.expanduser("~")) / "Documents"
+        else:  # Mac/Linux
+            documents = Path(os.path.expanduser("~")) / "Documents"
+
+        app_data_dir = documents / "賃貸管理システム"
+        app_data_dir.mkdir(parents=True, exist_ok=True)
+        return app_data_dir
 
     def generate_license_key(self, customer_name, customer_email, expiry_days=None):
         """

@@ -29,17 +29,60 @@ def check_license():
 
     if valid:
         if license_type == 'trial':
-            # トライアル版の場合、メッセージを表示
+            # トライアル版の場合、残り日数を表示
+            _, _, remaining_days = manager.check_trial()
             QMessageBox.information(
                 None,
                 "トライアル版",
-                message + "\n\n製品版ライセンスのご購入をご検討ください。"
+                f"{message}\n\n製品版ライセンスのご購入をご検討ください。"
             )
         return True
 
-    # ライセンスダイアログを表示
+    # 有効なライセンスもトライアルもない場合
+    # トライアルが開始されていない場合は自動開始
+    if not os.path.exists(manager.trial_file):
+        success, msg = manager.start_trial()
+        if success:
+            QMessageBox.information(
+                None,
+                "トライアル開始",
+                f"30日間の無料トライアルを開始しました。\n\n"
+                f"トライアル期間終了後は、ライセンスキーの購入が必要です。\n\n"
+                f"購入URL: https://s-k-dangi.com"
+            )
+            return True
+        else:
+            QMessageBox.critical(
+                None,
+                "エラー",
+                f"トライアル開始に失敗しました: {msg}"
+            )
+            return False
+
+    # トライアル期限切れの場合
+    QMessageBox.critical(
+        None,
+        "トライアル期間終了",
+        "30日間の無料トライアル期間が終了しました。\n\n"
+        "引き続きご利用いただくには、ライセンスキーの購入が必要です。\n\n"
+        "購入URL: https://s-k-dangi.com\n\n"
+        "購入後、「ライセンス登録」からライセンスキーを入力してください。"
+    )
+
+    # ライセンス登録ダイアログを表示
     dialog = LicenseDialog()
-    return dialog.exec() == QDialog.DialogCode.Accepted
+    result = dialog.exec() == QDialog.DialogCode.Accepted
+
+    if not result:
+        # ライセンス登録をキャンセルした場合は終了
+        QMessageBox.warning(
+            None,
+            "アプリケーション終了",
+            "ライセンス認証がキャンセルされました。\n\nアプリケーションを終了します。"
+        )
+        return False
+
+    return result
 
 def main():
     """メイン関数"""

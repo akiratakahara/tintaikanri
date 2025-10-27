@@ -3,9 +3,30 @@ import os
 from datetime import datetime
 from typing import List, Dict, Any
 from enum import Enum
+from pathlib import Path
 
-# データベースファイル名
-DATABASE_FILE = "tintai_management.db"
+# データベースファイルの保存場所をユーザーのドキュメントフォルダに設定
+def get_data_directory():
+    """アプリケーションのデータディレクトリを取得（ユーザーのドキュメントフォルダ内）"""
+    # ユーザーのドキュメントフォルダを取得
+    if os.name == 'nt':  # Windows
+        documents = Path(os.path.expanduser("~")) / "Documents"
+    else:  # Mac/Linux
+        documents = Path(os.path.expanduser("~")) / "Documents"
+
+    # アプリケーション専用フォルダを作成
+    app_data_dir = documents / "賃貸管理システム"
+    app_data_dir.mkdir(parents=True, exist_ok=True)
+
+    # 書類保存用のサブフォルダも作成
+    (app_data_dir / "property_documents").mkdir(exist_ok=True)
+    (app_data_dir / "contract_documents").mkdir(exist_ok=True)
+
+    return app_data_dir
+
+# データベースファイルのパス
+DATA_DIR = get_data_directory()
+DATABASE_FILE = str(DATA_DIR / "tintai_management.db")
 
 # Document Type の定義
 class DocumentType(str, Enum):
@@ -1266,7 +1287,7 @@ class TenantContract:
                auto_create_tasks: bool = True, memo: str = None, customer_id: int = None,
                contract_status: str = 'active', renewal_terms: str = None, tenant_phone: str = None,
                tenant_name: str = None, notes: str = None, mediation_type: str = '片手仲介',
-               party_type: str = 'テナント（借主）') -> int:
+               party_type: str = 'テナント（借主）', property_id: int = None) -> int:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
@@ -1276,14 +1297,14 @@ class TenantContract:
                                         renewal_deadline_days, owner_cancellation_notice_days,
                                         tenant_cancellation_notice_days, auto_create_tasks, memo, customer_id,
                                         contract_status, renewal_terms, tenant_phone, tenant_name, notes,
-                                        mediation_type, party_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        mediation_type, party_type, property_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (unit_id, contractor_name, start_date, end_date, rent, maintenance_fee,
               security_deposit, key_money, renewal_method, insurance_flag,
               renewal_notice_days, renewal_deadline_days, owner_cancellation_notice_days,
               tenant_cancellation_notice_days, auto_create_tasks, memo, customer_id,
               contract_status, renewal_terms, tenant_phone, tenant_name, notes,
-              mediation_type, party_type))
+              mediation_type, party_type, property_id))
         contract_id = cursor.lastrowid
         conn.commit()
         conn.close()
@@ -1304,11 +1325,14 @@ class TenantContract:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT tc.*, p.name as property_name,
-                   u.room_number, u.floor, u.property_id
+            SELECT tc.*,
+                   COALESCE(p.name, p2.name) as property_name,
+                   u.room_number, u.floor,
+                   COALESCE(u.property_id, tc.property_id) as property_id
             FROM tenant_contracts tc
             LEFT JOIN units u ON tc.unit_id = u.id
             LEFT JOIN properties p ON u.property_id = p.id
+            LEFT JOIN properties p2 ON tc.property_id = p2.id
             ORDER BY tc.created_at DESC
         ''')
         contracts = [dict(row) for row in cursor.fetchall()]
@@ -1321,11 +1345,14 @@ class TenantContract:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT tc.*, p.name as property_name, 
-                   u.room_number, u.floor
+            SELECT tc.*,
+                   COALESCE(p.name, p2.name) as property_name,
+                   u.room_number, u.floor,
+                   COALESCE(u.property_id, tc.property_id) as property_id
             FROM tenant_contracts tc
             LEFT JOIN units u ON tc.unit_id = u.id
             LEFT JOIN properties p ON u.property_id = p.id
+            LEFT JOIN properties p2 ON tc.property_id = p2.id
             WHERE tc.end_date <= date('now', '+' || ? || ' days')
             ORDER BY tc.end_date
         ''', (days,))
@@ -1379,7 +1406,7 @@ class TenantContract:
             'advertising_fee', 'advertising_fee_included', 'commission_notes',
             'owner_cancellation_notice_days', 'tenant_cancellation_notice_days',
             'contract_status', 'renewal_terms', 'tenant_phone', 'tenant_name', 'notes',
-            'mediation_type', 'party_type'
+            'mediation_type', 'party_type', 'property_id'
         ]
 
         # 更新するフィールドと値を抽出

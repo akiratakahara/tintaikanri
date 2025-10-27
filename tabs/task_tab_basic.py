@@ -162,12 +162,31 @@ class TaskTabBasic(QWidget):
             }
         """)
 
+        self.import_button = QPushButton("📥 CSV取込")
+        self.import_button.clicked.connect(self.import_from_csv)
+        self.import_button.setStyleSheet("""
+            QPushButton {
+                background-color: #10b981;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-size: 13px;
+                font-weight: 500;
+                min-height: 32px;
+            }
+            QPushButton:hover {
+                background-color: #059669;
+            }
+        """)
+
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.edit_button)
         button_layout.addWidget(self.complete_button)
         button_layout.addWidget(self.delete_button)
         button_layout.addWidget(self.clear_button)
         button_layout.addWidget(self.export_button)
+        button_layout.addWidget(self.import_button)
         button_layout.addStretch()
         
         # フィルター（2つに整理）
@@ -675,3 +694,51 @@ class TaskTabBasic(QWidget):
 
         except Exception as e:
             MessageHelper.show_error(self, f"CSV出力中にエラーが発生しました: {str(e)}")
+
+    def import_from_csv(self):
+        """CSVファイルからタスクデータをインポート"""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from data_importer import TaskImporter
+
+        # 確認ダイアログ
+        reply = QMessageBox.question(
+            self,
+            "タスクデータのインポート",
+            "タスクをインポートするには、事前に以下のデータが登録されている必要があります:\n\n"
+            "✓ 顧客データ（タスク対象の顧客）\n"
+            "✓ 物件データ（タスク対象の物件）\n\n"
+            "続行しますか？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        # ファイル選択ダイアログ
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "CSVファイルを選択",
+            "",
+            "CSV/Excel Files (*.csv *.xlsx *.xls);;All Files (*.*)"
+        )
+
+        if not file_path:
+            return
+
+        # インポート実行
+        success, count, message = TaskImporter.import_tasks(file_path)
+
+        if success:
+            QMessageBox.information(
+                self,
+                "インポート成功",
+                f"{count}件のタスクをインポートしました。\n\n{message}"
+            )
+            # データを再読み込み
+            self.load_tasks()
+        else:
+            QMessageBox.critical(
+                self,
+                "インポート失敗",
+                f"タスクのインポートに失敗しました。\n\n{message}"
+            )

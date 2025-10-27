@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
                              QTableWidgetItem, QPushButton, QLabel, QLineEdit,
                              QTextEdit, QMessageBox, QGroupBox, QFormLayout,
-                             QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox, QDialog, QDialogButtonBox, QTabWidget, QInputDialog)
+                             QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox, QDialog, QDialogButtonBox, QTabWidget, QInputDialog, QFileDialog)
 from PyQt6.QtCore import Qt, QDate, pyqtSignal
 import sys
 import os
@@ -96,11 +96,15 @@ class CustomerTab(QWidget):
         self.export_button = QPushButton("CSV出力")
         self.export_button.clicked.connect(self.export_to_csv)
 
+        self.import_button = QPushButton("📥 CSV取込")
+        self.import_button.clicked.connect(self.import_from_csv)
+
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.update_button)
         button_layout.addWidget(self.delete_button)
         button_layout.addWidget(self.clear_button)
         button_layout.addWidget(self.export_button)
+        button_layout.addWidget(self.import_button)
         button_layout.addStretch()
         
         # 顧客一覧テーブル
@@ -576,3 +580,43 @@ class CustomerTab(QWidget):
         except Exception as e:
             # エラーが発生しても顧客登録自体は成功しているので、エラー表示はしない
             print(f"接点履歴タブの顧客リスト更新エラー: {e}")
+
+    def import_from_csv(self):
+        """CSVファイルから顧客データをインポート"""
+        try:
+            from data_importer import CustomerImporter
+
+            # ファイル選択ダイアログ
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "顧客CSVファイルを選択",
+                "",
+                "CSVファイル (*.csv);;Excelファイル (*.xlsx *.xls);;すべてのファイル (*)"
+            )
+
+            if not file_path:
+                return
+
+            # インポート実行
+            success, count, message = CustomerImporter.import_customers(file_path)
+
+            if success:
+                MessageHelper.show_success(self, message)
+                # データを更新
+                self.load_customers()
+                # 接点履歴タブも更新
+                self.refresh_communication_customers()
+            else:
+                MessageHelper.show_error(self, message)
+
+        except ImportError as e:
+            import traceback
+            MessageHelper.show_error(
+                self,
+                f"data_importer.pyが見つかりません。\n"
+                f"システムファイルが正しくインストールされているか確認してください。\n\n"
+                f"詳細: {str(e)}\n\n{traceback.format_exc()}"
+            )
+        except Exception as e:
+            import traceback
+            MessageHelper.show_error(self, f"インポート処理中にエラーが発生しました:\n{str(e)}\n\n{traceback.format_exc()}")

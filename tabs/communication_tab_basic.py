@@ -207,6 +207,9 @@ class CommunicationTabBasic(QWidget):
         self.export_button = QPushButton("📊 CSV出力")
         self.export_button.clicked.connect(self.export_to_csv)
 
+        self.import_button = QPushButton("📥 CSV取込")
+        self.import_button.clicked.connect(self.import_from_csv)
+
         # 検索・フィルター
         search_layout = QHBoxLayout()
         
@@ -490,11 +493,29 @@ class CommunicationTabBasic(QWidget):
             }
         """)
 
+        # CSV取込ボタンのスタイル
+        self.import_button.setStyleSheet("""
+            QPushButton {
+                background-color: #10b981;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-size: 13px;
+                font-weight: 500;
+                min-height: 32px;
+            }
+            QPushButton:hover {
+                background-color: #059669;
+            }
+        """)
+
         main_buttons_layout.addWidget(self.add_button)
         main_buttons_layout.addWidget(self.edit_button)
         main_buttons_layout.addWidget(self.delete_button)
         main_buttons_layout.addWidget(self.clear_button)
         main_buttons_layout.addWidget(self.export_button)
+        main_buttons_layout.addWidget(self.import_button)
         main_buttons_layout.addStretch()
         
         button_section_layout.addLayout(main_buttons_layout)
@@ -969,3 +990,50 @@ class CommunicationTabBasic(QWidget):
 
         except Exception as e:
             MessageHelper.show_error(self, f"CSV出力中にエラーが発生しました: {str(e)}")
+
+    def import_from_csv(self):
+        """CSVファイルから接点履歴データをインポート"""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from data_importer import CommunicationImporter
+
+        # 確認ダイアログ
+        reply = QMessageBox.question(
+            self,
+            "接点履歴のインポート",
+            "接点履歴をインポートするには、事前に以下のデータが登録されている必要があります:\n\n"
+            "✓ 顧客データ（接点履歴の対象顧客）\n\n"
+            "続行しますか？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        # ファイル選択ダイアログ
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "CSVファイルを選択",
+            "",
+            "CSV/Excel Files (*.csv *.xlsx *.xls);;All Files (*.*)"
+        )
+
+        if not file_path:
+            return
+
+        # インポート実行
+        success, count, message = CommunicationImporter.import_communications(file_path)
+
+        if success:
+            QMessageBox.information(
+                self,
+                "インポート成功",
+                f"{count}件の接点履歴をインポートしました。\n\n{message}"
+            )
+            # データを再読み込み
+            self.load_communications()
+        else:
+            QMessageBox.critical(
+                self,
+                "インポート失敗",
+                f"接点履歴のインポートに失敗しました。\n\n{message}"
+            )

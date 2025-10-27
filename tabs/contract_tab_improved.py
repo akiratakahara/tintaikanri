@@ -1382,31 +1382,38 @@ class ContractEditDialog(QDialog):
 
         # 借主（乙・テナント）からの解約通知期限
         self.tenant_cancellation_notice_combo = QComboBox()
+        self.tenant_cancellation_notice_combo.addItem("契約満了の6ヶ月前", 180)
         self.tenant_cancellation_notice_combo.addItem("契約満了の3ヶ月前", 90)
         self.tenant_cancellation_notice_combo.addItem("契約満了の2ヶ月前", 60)
         self.tenant_cancellation_notice_combo.addItem("契約満了の1ヶ月前", 30)
         self.tenant_cancellation_notice_combo.addItem("契約満了の3週間前", 21)
         self.tenant_cancellation_notice_combo.addItem("契約満了の2週間前", 14)
         self.tenant_cancellation_notice_combo.addItem("契約満了の1週間前", 7)
-        self.tenant_cancellation_notice_combo.setCurrentIndex(2)  # デフォルト: 1ヶ月前（30日）
-        self.tenant_cancellation_notice_combo.setToolTip("借主（テナント）が解約する場合の通知期限")
+        self.tenant_cancellation_notice_combo.setCurrentIndex(3)  # デフォルト: 1ヶ月前（30日）
+        self.tenant_cancellation_notice_combo.setToolTip("借主（テナント）が解約する場合の通知期限\n※飲食店・事務所は6ヶ月前が一般的")
 
         # 更新通知期限（タスク作成用）
         self.renewal_notice_period_combo = QComboBox()
+        self.renewal_notice_period_combo.addItem("契約満了の6ヶ月前", 180)
+        self.renewal_notice_period_combo.addItem("契約満了の5ヶ月前", 150)
         self.renewal_notice_period_combo.addItem("契約満了の4ヶ月前", 120)
         self.renewal_notice_period_combo.addItem("契約満了の3ヶ月前", 90)
         self.renewal_notice_period_combo.addItem("契約満了の2ヶ月前", 60)
         self.renewal_notice_period_combo.addItem("契約満了の1ヶ月前", 30)
-        self.renewal_notice_period_combo.setCurrentIndex(1)  # デフォルト: 2ヶ月前（60日）
+        self.renewal_notice_period_combo.setCurrentIndex(3)  # デフォルト: 3ヶ月前（90日）
         self.renewal_notice_period_combo.setToolTip("更新案内を開始すべき期限（タスク作成用）")
 
         # 更新手続き期限
         self.renewal_deadline_period_combo = QComboBox()
+        self.renewal_deadline_period_combo.addItem("契約満了の6ヶ月前", 180)
+        self.renewal_deadline_period_combo.addItem("契約満了の5ヶ月前", 150)
+        self.renewal_deadline_period_combo.addItem("契約満了の4ヶ月前", 120)
+        self.renewal_deadline_period_combo.addItem("契約満了の3ヶ月前", 90)
         self.renewal_deadline_period_combo.addItem("契約満了の2ヶ月前", 60)
         self.renewal_deadline_period_combo.addItem("契約満了の1ヶ月前", 30)
         self.renewal_deadline_period_combo.addItem("契約満了の3週間前", 21)
         self.renewal_deadline_period_combo.addItem("契約満了の2週間前", 14)
-        self.renewal_deadline_period_combo.setCurrentIndex(1)  # デフォルト: 1ヶ月前（30日）
+        self.renewal_deadline_period_combo.setCurrentIndex(5)  # デフォルト: 1ヶ月前（30日）
         self.renewal_deadline_period_combo.setToolTip("更新手続きを完了すべき期限")
 
         self.auto_create_tasks_check = QCheckBox("自動でタスクを作成")
@@ -1635,6 +1642,13 @@ class ContractEditDialog(QDialog):
                     # 物件選択により部屋リストが更新される
                     break
 
+        # 物件全体チェックの復元（unit_idがNULLの場合は物件全体契約）
+        # property_idの有無に関わらず、unit_idがない場合は物件全体契約と判断
+        if not unit_id:
+            self.whole_property_check.setChecked(True)
+        else:
+            self.whole_property_check.setChecked(False)
+
         # 部屋を設定（物件選択後に設定）
         if unit_id:
             # 少し待ってから部屋を設定（物件変更イベントが完了するまで）
@@ -1767,6 +1781,49 @@ class ContractEditDialog(QDialog):
         if party_type:
             self.party_type_combo.setCurrentText(party_type)
 
+        # 両手仲介の場合、contractor_nameを分割してテナントとオーナーを復元
+        if mediation_type == '両手仲介' and existing_contractor:
+            if ' / ' in existing_contractor:
+                parts = existing_contractor.split(' / ')
+                tenant_part = parts[0].strip() if len(parts) > 0 else ''
+                owner_part = parts[1].strip() if len(parts) > 1 else ''
+
+                # テナント（借主）を設定
+                if tenant_part:
+                    # テナントコンボボックスから検索
+                    tenant_index = -1
+                    for i in range(self.tenant_combo.count()):
+                        item_text = self.tenant_combo.itemText(i)
+                        # 名前部分だけを比較（電話番号を除く）
+                        item_name = item_text.split(' (')[0].strip() if ' (' in item_text else item_text.strip()
+                        if item_name == tenant_part or item_text.startswith(tenant_part):
+                            tenant_index = i
+                            break
+
+                    if tenant_index >= 0:
+                        self.tenant_combo.setCurrentIndex(tenant_index)
+                    else:
+                        # リストにない場合は手入力として設定
+                        self.tenant_combo.setEditText(tenant_part)
+
+                # オーナー（貸主）を設定
+                if owner_part:
+                    # オーナーコンボボックスから検索
+                    owner_index = -1
+                    for i in range(self.owner_combo.count()):
+                        item_text = self.owner_combo.itemText(i)
+                        # 名前部分だけを比較（電話番号を除く）
+                        item_name = item_text.split(' (')[0].strip() if ' (' in item_text else item_text.strip()
+                        if item_name == owner_part or item_text.startswith(owner_part):
+                            owner_index = i
+                            break
+
+                    if owner_index >= 0:
+                        self.owner_combo.setCurrentIndex(owner_index)
+                    else:
+                        # リストにない場合は手入力として設定
+                        self.owner_combo.setEditText(owner_part)
+
         self.auto_create_tasks_check.setChecked(self.contract_data.get('auto_create_tasks', True))
 
         # サブタブにデータ設定
@@ -1796,10 +1853,16 @@ class ContractEditDialog(QDialog):
             # 両手仲介の場合はテナントとオーナー両方
             tenant_name = self.tenant_combo.currentText().strip() if hasattr(self, 'tenant_combo') else ""
             owner_name = self.owner_combo.currentText().strip() if hasattr(self, 'owner_combo') else ""
-            contractor_name = tenant_name  # 契約者はテナント
-            # テナントのIDを取得
-            if hasattr(self, 'tenant_combo'):
-                customer_id = self.tenant_combo.currentData()
+            # 両手仲介の場合は借主とオーナー両方を契約者として扱う
+            # contractor_nameには「借主 / オーナー」形式で保存
+            if tenant_name and owner_name:
+                contractor_name = f"{tenant_name} / {owner_name}"
+            elif tenant_name:
+                contractor_name = tenant_name
+            else:
+                contractor_name = owner_name
+            # 両手仲介では顧客IDは設定しない（両者が顧客のため）
+            customer_id = None
         else:
             # 片手仲介の場合は当事者選択に応じて
             party_type = self.party_type_combo.currentText() if hasattr(self, 'party_type_combo') else "テナント（借主）"
@@ -2111,12 +2174,15 @@ class ContractTabImproved(QWidget):
         
         self.export_button = QPushButton("CSV出力")
         self.export_button.clicked.connect(self.export_to_csv)
-        
+
+        self.import_button = QPushButton("📥 CSV取込")
+        self.import_button.clicked.connect(self.import_from_csv)
+
         # 表示切替ボタン
         self.detail_view_button = QPushButton("詳細表示")
         self.detail_view_button.setCheckable(True)
         self.detail_view_button.clicked.connect(self.toggle_detail_view)
-        
+
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.edit_button)
         button_layout.addWidget(self.delete_button)
@@ -2124,6 +2190,7 @@ class ContractTabImproved(QWidget):
         button_layout.addWidget(self.detail_view_button)
         button_layout.addWidget(self.refresh_button)
         button_layout.addWidget(self.export_button)
+        button_layout.addWidget(self.import_button)
         button_layout.addStretch()
         
         # 契約一覧テーブル
@@ -2205,12 +2272,38 @@ class ContractTabImproved(QWidget):
                 # 基本情報
                 self.contract_table.setItem(row_position, 0, QTableWidgetItem(str(contract['id'])))
                 self.contract_table.setItem(row_position, 1, QTableWidgetItem(contract.get('property_name', '')))
-                self.contract_table.setItem(row_position, 2, QTableWidgetItem(contract.get('room_number', '')))
-                self.contract_table.setItem(row_position, 3, QTableWidgetItem(contract.get('contractor_name', '')))
 
-                # 借主名（tenant_nameを表示、なければ空欄）
-                tenant_name = contract.get('tenant_name', '') or ''
-                self.contract_table.setItem(row_position, 4, QTableWidgetItem(tenant_name))
+                # 部屋番号（物件全体の場合は「物件全体」と表示）
+                room_number = contract.get('room_number', '')
+                if not room_number and not contract.get('unit_id'):
+                    room_number = '物件全体'
+                self.contract_table.setItem(row_position, 2, QTableWidgetItem(room_number))
+
+                # 契約者名と借主名の表示ロジック
+                contractor_name = contract.get('contractor_name', '')
+                mediation_type = contract.get('mediation_type', '片手仲介')
+
+                if mediation_type == '両手仲介':
+                    # 両手仲介の場合
+                    # 契約者列: 「借主 / オーナー」全体を表示
+                    self.contract_table.setItem(row_position, 3, QTableWidgetItem(contractor_name))
+
+                    # 借主列: contractor_nameから借主部分を抽出（「/」の前）
+                    if ' / ' in contractor_name:
+                        parts = contractor_name.split(' / ')
+                        tenant_part = parts[0] if len(parts) > 0 else ''
+                        self.contract_table.setItem(row_position, 4, QTableWidgetItem(tenant_part))
+                    else:
+                        # 万が一「/」がない場合はtenant_nameを使用
+                        tenant_name = contract.get('tenant_name', '') or ''
+                        self.contract_table.setItem(row_position, 4, QTableWidgetItem(tenant_name))
+                else:
+                    # 片手仲介の場合
+                    # 契約者列: contractor_nameを表示
+                    self.contract_table.setItem(row_position, 3, QTableWidgetItem(contractor_name))
+                    # 借主列: tenant_nameを表示
+                    tenant_name = contract.get('tenant_name', '') or ''
+                    self.contract_table.setItem(row_position, 4, QTableWidgetItem(tenant_name))
 
                 # 契約期間
                 start_date = DateHelper.format_date(contract.get('start_date'), "%Y年%m月%d日")
@@ -2454,7 +2547,8 @@ class ContractTabImproved(QWidget):
                     tenant_name=data.get('tenant_name'),
                     notes=data.get('notes'),
                     mediation_type=data.get('mediation_type', '片手仲介'),
-                    party_type=data.get('party_type', 'テナント（借主）')
+                    party_type=data.get('party_type', 'テナント（借主）'),
+                    property_id=data.get('property_id')
                 )
                 
                 # 自動タスク作成が有効な場合、更新通知タスクを作成
@@ -2571,6 +2665,7 @@ class ContractTabImproved(QWidget):
                     notes=data.get('notes'),
                     mediation_type=data.get('mediation_type'),
                     party_type=data.get('party_type'),
+                    property_id=data.get('property_id'),
                     # 手数料情報も含める
                     tenant_commission_months=data.get('tenant_commission_months'),
                     landlord_commission_months=data.get('landlord_commission_months'),
@@ -2650,6 +2745,55 @@ class ContractTabImproved(QWidget):
                             writer.writerow(row_data)
                 
                 MessageHelper.show_success(self, f"CSVファイルを出力しました:\n{file_path}")
-                
+
         except Exception as e:
             MessageHelper.show_error(self, f"CSV出力中にエラーが発生しました: {str(e)}")
+
+    def import_from_csv(self):
+        """CSVファイルから契約データをインポート"""
+        try:
+            from data_importer import ContractImporter
+
+            # 注意メッセージを表示
+            reply = QMessageBox.question(
+                self,
+                "契約データのインポート",
+                "契約をインポートするには、事前に以下のデータが登録されている必要があります:\n\n"
+                "✓ 物件データ\n"
+                "✓ 顧客データ（テナント）\n\n"
+                "続行しますか？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            # ファイル選択ダイアログ
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "契約CSVファイルを選択",
+                "",
+                "CSVファイル (*.csv);;Excelファイル (*.xlsx *.xls);;すべてのファイル (*)"
+            )
+
+            if not file_path:
+                return
+
+            # インポート実行
+            success, count, message = ContractImporter.import_contracts(file_path)
+
+            if success:
+                MessageHelper.show_success(self, message)
+                # データを更新
+                self.load_contracts()
+            else:
+                MessageHelper.show_error(self, message)
+
+        except ImportError:
+            MessageHelper.show_error(
+                self,
+                "data_importer.pyが見つかりません。\n"
+                "システムファイルが正しくインストールされているか確認してください。"
+            )
+        except Exception as e:
+            MessageHelper.show_error(self, f"インポート処理中にエラーが発生しました:\n{str(e)}")
