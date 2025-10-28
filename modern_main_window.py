@@ -23,6 +23,7 @@ from tabs.contract_tab_improved import ContractTabImproved
 from tabs.task_tab_basic import TaskTabBasic
 from tabs.communication_tab_basic import CommunicationTabBasic
 from tabs.dashboard_tab import DashboardTab
+from tabs.document_generator_tab import DocumentGeneratorTab
 
 # モダンタブ
 try:
@@ -490,6 +491,7 @@ class ModernMainWindow(QMainWindow):
                 ("customers", CustomerTab, "顧客管理"),
                 ("properties", PropertyUnifiedManagement, "物件・部屋管理"),
                 ("contracts", ContractTabImproved, "契約管理"),
+                ("documents", DocumentGeneratorTab, "契約書・重説生成"),
                 ("tasks", TaskTabBasic, "タスク管理"),
                 ("communications", CommunicationTabBasic, "接点履歴"),
                 ("calendar", CalendarTab, "カレンダー"),
