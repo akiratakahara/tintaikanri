@@ -2,54 +2,32 @@
 AI書類解析・テンプレート生成モジュール
 
 過去の契約書や重説をAIで解析し、テンプレート化する機能を提供
+ローカルOCR（Tesseract + pdfplumber）を使用
 """
-import google.generativeai as genai
-from PIL import Image
 import json
 import os
-import fitz  # PyMuPDF
-import io
+import re
 from typing import Dict, List, Tuple
-from config import GEMINI_API_KEY
+from pathlib import Path
 
 
 class DocumentAI:
-    """書類をAIで解析してテンプレート化するクラス"""
+    """書類をAIで解析してテンプレート化するクラス（ローカルOCR版）"""
 
     def __init__(self):
         """初期化"""
-        if not GEMINI_API_KEY:
-            api_key = "AIzaSyCrpvxCC6mqPF9Il3qPwDp84hMJFT0XagU"
-        else:
-            api_key = GEMINI_API_KEY
+        # ContractOCRクラスを使用
+        from contract_ocr import ContractOCR
+        self.ocr = ContractOCR()
 
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
-
-    def pdf_to_images(self, pdf_path: str) -> List[Image.Image]:
-        """PDFファイルを画像に変換"""
-        try:
-            pdf_document = fitz.open(pdf_path)
-            images = []
-
-            for page_num in range(len(pdf_document)):
-                page = pdf_document.load_page(page_num)
-                mat = fitz.Matrix(2.0, 2.0)
-                pix = page.get_pixmap(matrix=mat)
-
-                img_data = pix.tobytes("png")
-                img = Image.open(io.BytesIO(img_data))
-                images.append(img)
-
-            pdf_document.close()
-            return images
-        except Exception as e:
-            print(f"PDF変換エラー: {e}")
-            return []
+        print("DocumentAI初期化完了（ローカルOCR使用）")
+        print(f"  pdfplumber: {'✓' if self.ocr.pdfplumber_available else '✗'}")
+        print(f"  Tesseract OCR: {'✓' if self.ocr.tesseract_available else '✗'}")
+        print(f"  pdf2image: {'✓' if self.ocr.pdf2image_available else '✗'}")
 
     def analyze_document_structure(self, file_path: str, document_type: str = "contract") -> Dict:
         """
-        書類を解析して構造とテンプレート化を行う
+        書類を解析して構造とテンプレート化を行う（ローカルOCR版）
 
         Args:
             file_path: 書類ファイルのパス
@@ -66,166 +44,192 @@ class DocumentAI:
             }
         """
         try:
-            # ファイル拡張子を確認
-            file_ext = os.path.splitext(file_path)[1].lower()
+            # OCRでテキスト抽出
+            print(f"書類からテキストを抽出中: {file_path}")
+            text = self.ocr.extract_text_from_pdf(file_path)
 
-            if file_ext == '.pdf':
-                images = self.pdf_to_images(file_path)
-                if not images:
-                    return {"success": False, "error": "PDFの変換に失敗しました"}
-                image = images[0]  # 最初のページを解析
-            else:
-                image = Image.open(file_path)
+            if not text or not text.strip():
+                return {"success": False, "error": "テキストの抽出に失敗しました"}
 
-            # 書類種別に応じたプロンプトを生成
-            prompt = self._get_analysis_prompt(document_type)
+            print(f"抽出されたテキスト（先頭500文字）:\n{text[:500]}...")
 
-            # Gemini APIで解析
-            response = self.model.generate_content([prompt, image])
-            result_text = response.text
+            # テキストからテンプレートと変数を生成
+            template_result = self._create_template_from_text(text, document_type)
 
-            # JSON形式で返却されることを期待
-            # Markdown のコードブロックを除去
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1].split("```")[0].strip()
-
-            result = json.loads(result_text)
-            result["success"] = True
-            return result
-
-        except json.JSONDecodeError as e:
             return {
-                "success": False,
-                "error": f"JSON解析エラー: {str(e)}",
-                "raw_response": result_text if 'result_text' in locals() else ""
+                "success": True,
+                "document_type": document_type,
+                "title": template_result.get("title", ""),
+                "template_text": template_result.get("template_text", text),
+                "variables": template_result.get("variables", []),
+                "sections": template_result.get("sections", []),
+                "notes": "ローカルOCRで抽出されたテキストをテンプレート化しました"
             }
+
         except Exception as e:
             return {
                 "success": False,
                 "error": f"書類解析エラー: {str(e)}"
             }
 
-    def _get_analysis_prompt(self, document_type: str) -> str:
-        """書類種別に応じた解析プロンプトを生成"""
+    def _create_template_from_text(self, text: str, document_type: str) -> Dict:
+        """
+        抽出したテキストからテンプレートと変数を生成（正規表現ベース）
 
-        base_prompt = """
-この画像は不動産賃貸の{doc_type_name}です。
-以下のタスクを実行してください：
+        Args:
+            text: OCRで抽出されたテキスト
+            document_type: 書類の種類
 
-1. 書類全体のテキストを抽出
-2. 変数となる部分（人名、日付、金額、物件名など）を識別
-3. テンプレート化（変数部分を{{変数名}}形式に置き換え）
+        Returns:
+            テンプレート情報
+        """
+        # テキストを正規化
+        normalized_text = re.sub(r'\s+', ' ', text)
 
-以下のJSON形式で返してください：
+        variables = []
+        template_text = text
 
-{{
-    "document_type": "{doc_type}",
-    "title": "書類のタイトル",
-    "template_text": "テンプレート化されたテキスト全体（変数は{{変数名}}形式）",
-    "variables": [
-        {{
-            "name": "変数名（日本語）",
-            "placeholder": "{{変数名}}",
-            "example_value": "元の文書から抽出した値",
-            "data_type": "text/number/date/currency",
-            "description": "この変数の説明",
-            "source_fields": ["contract.tenant_name", "contract.rent"] // システムのどのフィールドから取得できるか
-        }}
-    ],
-    "sections": [
-        {{
-            "section_name": "セクション名",
-            "content": "セクションの内容（テンプレート化済み）"
-        }}
-    ],
-    "notes": "解析時の注意事項や特記事項"
-}}
-
-【重要な変数の例】
-"""
-
+        # 契約書の場合の変数抽出パターン
         if document_type == "contract":
-            doc_type_name = "賃貸借契約書"
-            variables_example = """
-- テナント名（借主名）
-- 貸主名（オーナー名）
-- 物件名・住所
-- 部屋番号
-- 賃料
-- 管理費・共益費
-- 敷金
-- 礼金
-- 契約開始日
-- 契約終了日
-- 契約期間
-- 更新料
-- 保証会社名
-- 特約事項
-- 契約日
-- 仲介業者名
-"""
-        elif document_type == "explanation":
-            doc_type_name = "重要事項説明書"
-            variables_example = """
-- 借主名
-- 貸主名
-- 物件所在地
-- 建物名称
-- 部屋番号
-- 専有面積
-- 建物構造
-- 築年月
-- 賃料
-- 管理費
-- 敷金
-- 礼金
-- 契約期間
-- 更新条件
-- 用途地域
-- 設備内容
-- 禁止事項
-- 解約条件
-- 説明者名
-- 宅建士番号
-- 説明日
-"""
-        elif document_type == "application":
-            doc_type_name = "入居申込書"
-            variables_example = """
-- 申込者氏名
-- 生年月日
-- 現住所
-- 電話番号
-- メールアドレス
-- 勤務先名
-- 勤務先住所
-- 勤務先電話番号
-- 年収
-- 入居予定日
-- 希望物件名
-- 希望部屋番号
-- 緊急連絡先氏名
-- 緊急連絡先続柄
-- 緊急連絡先電話番号
-- 保証人氏名
-- 保証人住所
-- 保証人電話番号
-- 申込日
-"""
-        else:
-            doc_type_name = "書類"
-            variables_example = "- 一般的な変数項目"
+            title = "賃貸借契約書"
 
-        return base_prompt.format(
-            doc_type_name=doc_type_name,
-            doc_type=document_type
-        ) + variables_example
+            # テナント名（借主）
+            tenant_pattern = r'(賃借人|借主|乙)[：:\s]*([\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\s]+?)(?=住所|電話|〒|$)'
+            match = re.search(tenant_pattern, normalized_text)
+            if match:
+                tenant_name = match.group(2).strip()
+                variables.append({
+                    "name": "テナント名",
+                    "placeholder": "{{テナント名}}",
+                    "example_value": tenant_name,
+                    "data_type": "text",
+                    "description": "賃借人（借主）の氏名",
+                    "source_fields": ["contract.contractor_name", "contract.tenant_name"]
+                })
+                template_text = template_text.replace(tenant_name, "{{テナント名}}")
+
+            # オーナー名（貸主）
+            owner_pattern = r'(賃貸人|貸主|甲)[：:\s]*([\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\s]+?)(?=住所|電話|〒|$)'
+            match = re.search(owner_pattern, normalized_text)
+            if match:
+                owner_name = match.group(2).strip()
+                variables.append({
+                    "name": "オーナー名",
+                    "placeholder": "{{オーナー名}}",
+                    "example_value": owner_name,
+                    "data_type": "text",
+                    "description": "賃貸人（貸主）の氏名",
+                    "source_fields": ["property.owner_name"]
+                })
+                template_text = template_text.replace(owner_name, "{{オーナー名}}")
+
+            # 賃料
+            rent_pattern = r'賃料[はわ、，：:\s]*[月額は]*金?[¥￥]?\s*([\d,，]+)\s*円也?'
+            match = re.search(rent_pattern, normalized_text)
+            if match:
+                rent_value = match.group(1)
+                variables.append({
+                    "name": "賃料",
+                    "placeholder": "{{賃料}}",
+                    "example_value": rent_value,
+                    "data_type": "currency",
+                    "description": "月額賃料",
+                    "source_fields": ["contract.rent"]
+                })
+                template_text = template_text.replace(f"金{rent_value}円", "金{{賃料}}円")
+
+            # 管理費
+            maint_pattern = r'管理費[はわ、，：:\s]*[月額は]*金?[¥￥]?\s*([\d,，]+)\s*円也?'
+            match = re.search(maint_pattern, normalized_text)
+            if match:
+                maint_value = match.group(1)
+                variables.append({
+                    "name": "管理費",
+                    "placeholder": "{{管理費}}",
+                    "example_value": maint_value,
+                    "data_type": "currency",
+                    "description": "月額管理費",
+                    "source_fields": ["contract.maintenance_fee"]
+                })
+                template_text = template_text.replace(f"金{maint_value}円", "金{{管理費}}円")
+
+            # 契約期間（開始日）
+            start_pattern = r'(\d{4})[年/\-](\d{1,2})[月/\-](\d{1,2})日?[からより]'
+            match = re.search(start_pattern, normalized_text)
+            if match:
+                start_date = f"{match.group(1)}年{match.group(2)}月{match.group(3)}日"
+                variables.append({
+                    "name": "契約開始日",
+                    "placeholder": "{{契約開始日}}",
+                    "example_value": start_date,
+                    "data_type": "date",
+                    "description": "契約開始日",
+                    "source_fields": ["contract.start_date"]
+                })
+                template_text = template_text.replace(start_date, "{{契約開始日}}")
+
+            # 契約期間（終了日）
+            end_pattern = r'(\d{4})[年/\-](\d{1,2})[月/\-](\d{1,2})日?まで'
+            match = re.search(end_pattern, normalized_text)
+            if match:
+                end_date = f"{match.group(1)}年{match.group(2)}月{match.group(3)}日"
+                variables.append({
+                    "name": "契約終了日",
+                    "placeholder": "{{契約終了日}}",
+                    "example_value": end_date,
+                    "data_type": "date",
+                    "description": "契約終了日",
+                    "source_fields": ["contract.end_date"]
+                })
+                template_text = template_text.replace(end_date, "{{契約終了日}}")
+
+        elif document_type == "explanation":
+            title = "重要事項説明書"
+            # 重説用の変数抽出ロジック（簡易版）
+            # ここでは契約書と同様のパターンを使用
+            variables.append({
+                "name": "物件所在地",
+                "placeholder": "{{物件所在地}}",
+                "example_value": "",
+                "data_type": "text",
+                "description": "物件の所在地",
+                "source_fields": ["property.address"]
+            })
+
+        elif document_type == "application":
+            title = "入居申込書"
+            # 申込書用の変数抽出ロジック（簡易版）
+            variables.append({
+                "name": "申込者氏名",
+                "placeholder": "{{申込者氏名}}",
+                "example_value": "",
+                "data_type": "text",
+                "description": "申込者の氏名",
+                "source_fields": ["customer.name"]
+            })
+        else:
+            title = "書類"
+
+        # セクション分割（簡易版：改行で分割）
+        sections = []
+        paragraphs = text.split('\n\n')
+        for i, para in enumerate(paragraphs[:5]):  # 最初の5段落のみ
+            if para.strip():
+                sections.append({
+                    "section_name": f"第{i+1}条" if i < 10 else f"セクション{i+1}",
+                    "content": para.strip()[:200]  # 最初の200文字
+                })
+
+        return {
+            "title": title,
+            "template_text": template_text,
+            "variables": variables,
+            "sections": sections
+        }
 
     def extract_data_from_application(self, file_path: str) -> Dict:
         """
-        申込書からデータを抽出（契約情報への自動入力用）
+        申込書からデータを抽出（契約情報への自動入力用）ローカルOCR版
 
         Returns:
             {
@@ -242,56 +246,69 @@ class DocumentAI:
             }
         """
         try:
-            file_ext = os.path.splitext(file_path)[1].lower()
+            # OCRでテキスト抽出
+            print(f"申込書からテキストを抽出中: {file_path}")
+            text = self.ocr.extract_text_from_pdf(file_path)
 
-            if file_ext == '.pdf':
-                images = self.pdf_to_images(file_path)
-                if not images:
-                    return {"success": False, "error": "PDFの変換に失敗しました"}
-                image = images[0]
-            else:
-                image = Image.open(file_path)
+            if not text or not text.strip():
+                return {"success": False, "error": "テキストの抽出に失敗しました"}
 
-            prompt = """
-この画像は入居申込書です。
-以下の情報を抽出して、JSON形式で返してください：
+            # テキストを正規化
+            normalized_text = re.sub(r'\s+', ' ', text)
 
-{
-    "tenant_name": "申込者氏名",
-    "tenant_phone": "電話番号",
-    "tenant_email": "メールアドレス",
-    "tenant_address": "現住所",
-    "tenant_birthdate": "生年月日 (YYYY-MM-DD形式)",
-    "company_name": "勤務先名",
-    "company_address": "勤務先住所",
-    "company_phone": "勤務先電話番号",
-    "annual_income": "年収（数値のみ）",
-    "desired_move_in_date": "入居希望日 (YYYY-MM-DD形式)",
-    "desired_property": "希望物件名",
-    "desired_unit": "希望部屋番号",
-    "emergency_contact_name": "緊急連絡先氏名",
-    "emergency_contact_relation": "緊急連絡先続柄",
-    "emergency_contact_phone": "緊急連絡先電話番号",
-    "guarantor_name": "保証人氏名",
-    "guarantor_address": "保証人住所",
-    "guarantor_phone": "保証人電話番号",
-    "application_date": "申込日 (YYYY-MM-DD形式)",
-    "notes": "その他特記事項"
-}
+            # 抽出データの初期化
+            data = {
+                "tenant_name": None,
+                "tenant_phone": None,
+                "tenant_email": None,
+                "tenant_address": None,
+                "tenant_birthdate": None,
+                "company_name": None,
+                "company_address": None,
+                "company_phone": None,
+                "annual_income": None,
+                "desired_move_in_date": None,
+                "desired_property": None,
+                "desired_unit": None,
+                "emergency_contact_name": None,
+                "emergency_contact_relation": None,
+                "emergency_contact_phone": None,
+                "guarantor_name": None,
+                "guarantor_address": None,
+                "guarantor_phone": None,
+                "application_date": None,
+                "notes": None
+            }
 
-情報が見つからない場合は null を設定してください。
-"""
+            # 申込者氏名
+            name_pattern = r'(申込者|氏名|名前)[：:\s]*([\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\s]+?)(?=住所|電話|生年月日|$)'
+            match = re.search(name_pattern, normalized_text)
+            if match:
+                data["tenant_name"] = match.group(2).strip()
 
-            response = self.model.generate_content([prompt, image])
-            result_text = response.text
+            # 電話番号
+            phone_pattern = r'(電話|TEL|tel|携帯)[：:\s]*(\d{2,4}[-\s]?\d{2,4}[-\s]?\d{4})'
+            match = re.search(phone_pattern, normalized_text)
+            if match:
+                data["tenant_phone"] = match.group(2).strip()
 
-            # Markdown のコードブロックを除去
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1].split("```")[0].strip()
+            # メールアドレス
+            email_pattern = r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
+            match = re.search(email_pattern, normalized_text)
+            if match:
+                data["tenant_email"] = match.group(1).strip()
 
-            data = json.loads(result_text)
+            # 希望物件名
+            property_pattern = r'(希望物件|物件名)[：:\s]*([\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF0-9\s]+?)(?=部屋番号|号室|$)'
+            match = re.search(property_pattern, normalized_text)
+            if match:
+                data["desired_property"] = match.group(2).strip()
+
+            # 入居希望日
+            date_pattern = r'(入居希望日|入居予定日)[：:\s]*(\d{4})[年/\-](\d{1,2})[月/\-](\d{1,2})日?'
+            match = re.search(date_pattern, normalized_text)
+            if match:
+                data["desired_move_in_date"] = f"{match.group(2)}-{match.group(3).zfill(2)}-{match.group(4).zfill(2)}"
 
             return {
                 "success": True,
